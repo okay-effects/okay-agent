@@ -15,6 +15,7 @@ import scala.jdk.CollectionConverters.*
     case -1 => None
     case i => args.lift(i + 1)
   if args.headOption.contains("acp") then Main.acp(args.tail)
+  if args.headOption.contains("serve") then Main.serve(args.tail)
   val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
@@ -24,6 +25,7 @@ import scala.jdk.CollectionConverters.*
                          |                  [--window N] [--dir D] [--yes] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M]   (an ACP agent over stdio: Zed, okay-remote)
+                         |       okay-agent serve [--port 8091] [--dir D] [--yes] [--url U] [--model M]   (AG-UI)
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
@@ -87,6 +89,22 @@ import scala.jdk.CollectionConverters.*
     case Outcome.OutOfBudget(what) => System.err.println(f"out of budget ($what) after $seconds%.1f s"); sys.exit(1)
 
 object Main:
+  /** okay-agent serve: the agent as an AG-UI server for one project — writes, commands and commits asked about
+   * (an interrupt each) unless --yes */
+  def serve(args: Seq[String]): Nothing =
+    def flag(n: String) = args.indexOf(n) match
+      case -1 => None
+      case i => args.lift(i + 1)
+    val url = flag("--url").orElse(sys.env.get("OKAY_AGENT_URL")).getOrElse("http://127.0.0.1:8090/v1")
+    val model = flag("--model").orElse(sys.env.get("OKAY_AGENT_MODEL")).getOrElse(firstModel(url))
+    val root = flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath
+    val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
+    val server = AgUiServer(root, () => HttpBackend(url, model), ask,
+      Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)))
+    System.err.println(s"okay-agent · $model · $root · AG-UI: POST /agent")
+    okay.llm.Server.run(flag("--port").map(_.toInt).getOrElse(8091))(server.serve)
+    sys.exit(0)
+
   /** okay-agent acp: the agent for an ACP client, over stdin and stdout (nothing else written there) */
   def acp(args: Seq[String]): Nothing =
     def flag(n: String) = args.indexOf(n) match

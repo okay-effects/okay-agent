@@ -10,9 +10,9 @@ import scala.collection.mutable
 
 /** okay-agent acp: THE AGENT SPEAKING ACP (the Agent Client Protocol: JSON-RPC, a line each, over stdio) — a client
  * (okay-remote through okay-guard, Zed) starts it, opens sessions, sends prompts. The same program: its files read and
- * written through the client (`fs/read_text_file`, `fs/write_text_file`), its commands run by the client (the `terminal/...` requests) — so the client's gate weighs
- * each, as it does any ACP agent's; each call shown to it (`tool_call`, `tool_call_update`), the model's words too
- * (`agent_message_chunk`). A session's prompts go on in one conversation (the prefix kept: the model's cache too).
+ * written through the client (`fs/read_text_file`, `fs/write_text_file`), its commands run by the client (the
+ * `terminal/...` requests) — so the client's gate weighs each, as it does any ACP agent's; each call shown to it
+ * (`tool_call`, `tool_call_update`), the model's words too (`agent_message_chunk`). A session's prompts go on in one conversation (the prefix kept: the model's cache too).
  * One thread: a request of its own answered while it waits, a cancel seen between steps */
 final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm.Backend,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(),
@@ -82,7 +82,7 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
       val ws = Workspace(root)
       val (servers, served, routes) = Mcp.attach(root, mcp(root), Workspace.tools.map(_.name).toSet, _ => ())
       val symdexHere = servers.exists(_.name == "symdex")
-      val notes = if symdexHere then Vector(Acp.symdexNote) else Vector.empty
+      val notes = if symdexHere then Vector(Project.symdexNote) else Vector.empty
       val sid = s"okay-${System.currentTimeMillis()}-${sessions.size}"
       sessions(sid) = Session(sid, ws, Workspace.tools ++ served, notes, routes, servers)
       id.foreach(reply(_, Json.obj("sessionId" -> Json.Str(sid))))
@@ -239,9 +239,6 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
 
 object Acp:
   case object Cancelled extends Exception("cancelled")
-
-  val symdexNote: String = "For where something is defined or used, who calls it, what implements it, use " +
-    "definition, references (callers=true), implementations, outline: exact, from the compiler; grep is for text."
 
   def commitLine(message: String): String =
     s"git add -A && git commit -q -m ${Workspace.quote(message)} && git log --oneline -1"

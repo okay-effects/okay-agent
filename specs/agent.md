@@ -81,7 +81,16 @@ States only through real transitions (the program run on a hypothesis's random a
   model's words as `agent_message_chunk`. A session's prompts go on in one conversation (`Agent.runOn` gives the
   conversation it ended with, `Agent.next` appends the next prompt: the prefix law across prompts). `session/cancel`
   seen between steps: the prompt ends `cancelled`. One thread: requests of the agent's answered while it waits.
-- **AG-UI** — `okay-agent serve`: `POST /agent` (AG-UI's transport), any AG-UI client a front end.
+- **AG-UI** — `okay-agent serve [--port 8091] [--dir D] [--yes]`: `POST /agent` (RunAgentInput) answered with the
+  run's events as SSE (okay-llm's `AgUi`, AG-UI 1.0), any AG-UI client a front end. An AG-UI thread is one
+  conversation kept here (`Agent.runOn`/`next`: the prefix law across runs); a thread's first run keeps the user and
+  assistant texts the client sent before. Each call shown (TOOL_CALL_START/ARGS/END before, TOOL_CALL_RESULT after),
+  the model's words between calls and its last as a text message. A call to be asked about (writes, commands, commits
+  unless `--yes`) ends the run with an interrupt (`outcome: interrupt`, reason `approval`, its `toolCallId`, payload
+  `{approved, reason?}`); the program waits for it ALIVE on its thread — no replay — and the next run's `resume`
+  answers it, the program going on, its events on that run's stream (no answer in 30 minutes: the run cancelled). A
+  new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
+  Order of interceptors (the innermost sees a call first): shown, then admitted, then gated.
 
 ## Where it lives
 
@@ -115,7 +124,11 @@ States only through real transitions (the program run on a hypothesis's random a
 3. ACP — done 2026-11-02: `okay-agent acp` (AcpSuite: a client of the test's — the edit through fs, the command
    through its terminal, the calls shown, a refused write a failed call, a second prompt in the same conversation, a
    client with no fs: the workspace's tools); okay-remote's "okay-agent · <model>".
-4. AG-UI: the shared events, okay-agent's server, okay-remote's endpoint.
+4. AG-UI — done 2026-11-02: okay-llm's `AgUi` (AG-UI 1.0's events, interrupts, RunAgentInput); `okay-agent serve`
+   (ServeSuite: a write asked by an interrupt, the program waiting alive, resumed, going on; a refusal the model's
+   observation; a thread's runs one conversation); okay-remote's `POST /agui` (every session, whatever its agent).
+   Checked with AG-UI's own client (@ag-ui/client, which verifies the stream) on Qwen3.6-35B: two approvals by
+   resume, the file, the answer 42 — against `okay-agent serve`, and against okay-remote with okay-agent inside.
 5. The forecast as an input of the policy.
 
 Tools of the first version: `read`, `write`, `edit` (replace a fragment), `bash`, `glob`, `grep`, `git_commit`. The

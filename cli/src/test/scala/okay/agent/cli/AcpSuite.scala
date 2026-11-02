@@ -7,8 +7,8 @@ import okay.agent.Hypo
 import okay.effects.json.Json
 import okay.llm.Ask
 
-/** the ACP agent with a client of the test's: its files through fs requests, its commands through terminal ones, each call
- * shown, a session's prompts in one conversation */
+/** the ACP agent with a client of the test's: its files through fs requests, its commands through terminal ones,
+ * each call shown, a session's prompts in one conversation */
 class AcpSuite extends munit.FunSuite:
   /** the model: edit, look, done — then, on a second prompt, a reply naming what it remembers */
   private def model(ask: Ask): String =
@@ -49,7 +49,8 @@ class AcpSuite extends munit.FunSuite:
           case _ => ()
       result.get
     private def serve(i: Json, method: String, p: Json): Unit = method match
-      case "fs/read_text_file" => answer(i, Json.obj("content" -> Json.Str(Files.readString(Path.of(p("path").string)))))
+      case "fs/read_text_file" =>
+        answer(i, Json.obj("content" -> Json.Str(Files.readString(Path.of(p("path").string)))))
       case "fs/write_text_file" =>
         if refuseWrites then send(Json.obj("jsonrpc" -> Json.Str("2.0"), "id" -> i, "error" -> Json.obj(
           "code" -> Json.num(-32000), "message" -> Json.Str("okay-guard: not written — denied"))))
