@@ -89,7 +89,14 @@ object Mcp:
 
   /** `symdex`: where to get symdex from — installed and kept up to date from its manifest by default */
   def found(root: Path, symdex: () => Option[String] = () => SymdexInstall().ensure()): Vector[Server] =
-    val listed = fromMcpJson(root)
+    // a symdex entry naming a path that is gone (a release since removed): run the one installed instead — the
+    // project's file left as it is
+    val listed = fromMcpJson(root).map { s =>
+      val gone = s.command.headOption.exists(c => c.startsWith("/") && !Files.exists(Path.of(c)))
+      if gone && (s.name == "symdex" || s.command.head.contains("/.symdex/")) then
+        symdex().fold(s)(l => s.copy(command = l :: s.command.tail))
+      else s
+    }
     val own = if listed.exists(s => s.name == "symdex" || s.command.exists(_.contains("symdex"))) then None
       else if indexed(root) then
         onPath().orElse(symdex()).map(l => Server("symdex", List(l, "serve", "--root", root.toString, "--lean")))

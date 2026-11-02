@@ -21,22 +21,34 @@ final class SymdexInstall(home: Path = Path.of(sys.props("user.home"), ".symdex"
     if !Files.isDirectory(home) then None
     else Files.list(home).iterator.asScala.toVector
       .map(d => d.getFileName.toString -> d.resolve("symdex/bin/symdex"))
-      .filter((v, l) => v.headOption.exists(_.isDigit) && Files.exists(l))
+      .filter((v, l) => v.headOption.exists(_.isDigit) && !v.endsWith(".part") && Files.exists(l))
       .sortBy((v, _) => SymdexInstall.version(v))(using Ordering.Tuple3[Int, Int, Int]).lastOption
 
-  /** the launcher to use: installed or updated first when it is time */
+  /** the launcher to use, by the stable path (~/.symdex/current, pointed at the newest installed): installed or
+   * updated first when it is time */
   def ensure(): Option[String] =
     val have = installed
     // the last check's time, written in the file (by the same clock that asks)
     val last = try Files.readString(checked).trim.toLong catch case _: Exception => 0L
     val due = have.isEmpty || now() - last > SymdexInstall.day
-    if sys.env.contains("OKAY_AGENT_NO_INSTALL") || !due then have.map(_._2.toString)
-    else
-      val after = try latest().flatMap(m => update(m, have)) catch case e: Exception =>
-        log(s"symdex: not updated (${e.getMessage})"); None
+    if !sys.env.contains("OKAY_AGENT_NO_INSTALL") && due then
+      try latest().foreach(m => update(m, have))
+      catch case e: Exception => log(s"symdex: not updated (${e.getMessage})")
       Files.createDirectories(home)
       Files.writeString(checked, now().toString)
-      after.orElse(have.map(_._2)).map(_.toString)
+    installed.map { (v, launcher) =>
+      advance(v)
+      val stable = home.resolve("current/symdex/bin/symdex")
+      if Files.exists(stable) then stable.toString else launcher.toString
+    }
+
+  /** ~/.symdex/current pointed at `v` if it points at nothing, or at an older release: forward only (sbt-symdex does
+   * the same) — the path projects' files name, so an update reaches them with the files unchanged */
+  def advance(v: String): Unit =
+    val current = home.resolve("current")
+    val at = if Files.isSymbolicLink(current) then Some(Files.readSymbolicLink(current).getFileName.toString) else None
+    if at.forall(a => SymdexInstall.newer(SymdexInstall.version(v), SymdexInstall.version(a)) || !Files.exists(current))
+    then SymdexInstall.run(List("sh", "-c", s"cd '$home' && ln -sfn '$v' current"), 30)
 
   /** the manifest read */
   def latest(): Option[Json] =

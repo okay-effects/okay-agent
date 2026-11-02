@@ -31,9 +31,12 @@ class McpSuite extends munit.FunSuite:
       "other": {"command": "node", "args": ["s.js"], "env": {"K": "v"}}}}""")
     assertEquals(Mcp.fromMcpJson(dir), Vector(Mcp.Server("symdex", List("/x/symdex", "serve", "--root", ".")),
       Mcp.Server("other", List("node", "s.js"), Map("K" -> "v"))))
-    // an index here too: symdex is listed already, so not added again
+    // an index here too: symdex is listed already, so not added again — and its path gone, the installed one run
     Files.createDirectories(dir.resolve("target/meta/META-INF/semanticdb"))
-    assertEquals(Mcp.found(dir).count(_.name == "symdex"), 1)
+    val found = Mcp.found(dir, () => Some("/installed/symdex"))
+    assertEquals(found.count(_.name == "symdex"), 1)
+    assertEquals(found.find(_.name == "symdex").map(_.command),
+      Some(List("/installed/symdex", "serve", "--root", ".")))
 
   test("an index for symdex: SemanticDB a compile wrote, or a SCIP file; none in a bare project"):
     val bare = Files.createTempDirectory("bare")
