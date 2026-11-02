@@ -79,7 +79,7 @@ class ForecastSuite extends munit.FunSuite:
     assertEquals(asked.result().size, 2)
     assert(asked.result()(1).contains("⚠ pushes"))
 
-  test("replayed from its journal with its forecasts: the same acts, the same end — the forecasts' turns read in place"):
+  test("replayed from its journal with its forecasts: the same acts, the same end — their turns read in place"):
     type Journalled[X] = (Llm + Tools + Human + Journal)[X]
     for seed <- 1 to 100 do
       val start = Agent.start("go", tools, Budget(turns = 8))
