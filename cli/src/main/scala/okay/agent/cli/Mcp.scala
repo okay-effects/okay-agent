@@ -87,13 +87,19 @@ final class McpServer(val name: String, command: List[String], dir: Path, env: M
 object Mcp:
   final case class Server(name: String, command: List[String], env: Map[String, String] = Map.empty)
 
-  def found(root: Path): Vector[Server] =
+  /** `symdex`: where to get symdex from — installed and kept up to date from its manifest by default */
+  def found(root: Path, symdex: () => Option[String] = () => SymdexInstall().ensure()): Vector[Server] =
     val listed = fromMcpJson(root)
-    val symdex = if listed.exists(s => s.name == "symdex" || s.command.exists(_.contains("symdex"))) then None
+    val own = if listed.exists(s => s.name == "symdex" || s.command.exists(_.contains("symdex"))) then None
       else if indexed(root) then
-        launcher().map(l => Server("symdex", List(l, "serve", "--root", root.toString, "--lean")))
+        onPath().orElse(symdex()).map(l => Server("symdex", List(l, "serve", "--root", root.toString, "--lean")))
       else None
-    listed ++ symdex
+    listed ++ own
+
+  /** symdex on PATH: the owner's own, used as it is */
+  def onPath(): Option[String] =
+    sys.env.getOrElse("PATH", "").split(':').map(Path.of(_).resolve("symdex")).find(Files.isExecutable(_))
+      .map(_.toString)
 
   /** `.mcp.json`'s stdio servers: `{"mcpServers": {name: {"command", "args", "env"}}}` */
   def fromMcpJson(root: Path): Vector[Server] =

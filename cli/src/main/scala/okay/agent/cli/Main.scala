@@ -48,7 +48,7 @@ import scala.jdk.CollectionConverters.*
   servers.foreach(s => System.err.println(s"mcp: ${s.name} — ${s.tools.size} tools"))
   val sbtProject = java.nio.file.Files.exists(workspace.root.resolve("build.sbt"))
   val symdexHere = servers.exists(_.name == "symdex")
-  if sbtProject && !symdexHere && !Mcp.indexed(workspace.root) && Mcp.launcher().isDefined then
+  if sbtProject && !symdexHere && !Mcp.indexed(workspace.root) then
     System.err.println("symdex: no index here — sbt 'set every semanticdbEnabled := true' Test/compile")
   val tools = Workspace.tools ++ served ++ (if sbtProject && !symdexHere then Vector(Symdex.spec) else Vector.empty)
   // what this run's tools are for: symdex's exact answers before grep

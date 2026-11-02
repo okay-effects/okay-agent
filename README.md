@@ -31,8 +31,11 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
   <journal>` runs it again with no model and no world, strictly; its law: the same acts, the same end.
 
 - MCP servers with no setting: the project's `.mcp.json` (Claude Code's file), and **symdex** where the project has an
-  index (SemanticDB, `*.scip`) and symdex is installed — its tools (definition, references, implementations, …) the
-  agent's, read-only. In an sbt project without it, the tool `symdex_setup` sets it up (its plugin, `sbt symdexIndex
+  index (SemanticDB, `*.scip`) — its tools (definition, references, implementations, …) the agent's, read-only.
+  symdex itself installed and kept up to date by okay-agent: its manifest on GitHub Pages
+  (https://okay-effects.github.io/symdex/latest.json) read at most once a day, a newer release downloaded, checked
+  (SHA-256), unpacked into ~/.symdex/<version> (where sbt-symdex puts it too); offline, the installed one;
+  `OKAY_AGENT_NO_INSTALL=1` not at all; one on PATH used as it is. In an sbt project without it, the tool `symdex_setup` sets it up (its plugin, `sbt symdexIndex
   symdexMcp`); the next run has its tools. A grep for a symbol that finds nothing points to `references`.
 
 Next: okay-agent over ACP in okay-remote; an AG-UI server; the forecast.
