@@ -70,7 +70,17 @@ States only through real transitions (the program run on a hypothesis's random a
 
 - **CLI** — `okay-agent "<task>"` in a workspace: the terminal its `Human`, local tools, the model over HTTP
   (okay-mlx's gateway by default) or in process; `--model`, `--budget`, `--replay <journal>`.
-- **ACP** — `okay-agent acp`: okay-remote offers "okay-agent · <model>" like opencode.
+- **ACP** — `okay-agent acp` (JSON-RPC over stdio; `OKAY_AGENT_URL`, `OKAY_AGENT_MODEL`): okay-remote offers
+  "okay-agent · <model>" for each model okay-llm's gateway lists. The same program, other handlers: `read`, `write`
+  and `edit` through the client's `fs/read_text_file` / `fs/write_text_file`, `bash` and `git_commit` a shell line
+  run by the client's terminal (`terminal/create` with the line as `command`, as okay-guard's terminals take it) — so
+  the client's gate weighs each, and the agent's own gate is off; `glob`, `grep` and symdex here (reads); an MCP tool
+  that may change something asked through `session/request_permission`. A client without fs or terminal: the
+  workspace's own tools. Each call shown before and after (`tool_call` with `rawInput.file_path` absolute or
+  `rawInput.command` — what the client's requests carry, so a request finds its call — then `tool_call_update`), the
+  model's words as `agent_message_chunk`. A session's prompts go on in one conversation (`Agent.runOn` gives the
+  conversation it ended with, `Agent.next` appends the next prompt: the prefix law across prompts). `session/cancel`
+  seen between steps: the prompt ends `cancelled`. One thread: requests of the agent's answered while it waits.
 - **AG-UI** — `okay-agent serve`: `POST /agent` (AG-UI's transport), any AG-UI client a front end.
 
 ## Where it lives
@@ -102,7 +112,9 @@ States only through real transitions (the program run on a hypothesis's random a
    about); `symdex_setup` (sbt: its plugin, `sbt symdexIndex symdexMcp`); a system note and a nudge on a symbol grep
    that found nothing. Admit sets plain scalars right ("True" → true, "3" → 3). On Qwen3.6: set symdex up in one turn
    (33 s); the next run answered with `implementations` and `references` (a grep had missed `p.price`).
-3. ACP: okay-agent in okay-remote, with the policy and the phone.
+3. ACP — done 2026-11-02: `okay-agent acp` (AcpSuite: a client of the test's — the edit through fs, the command
+   through its terminal, the calls shown, a refused write a failed call, a second prompt in the same conversation, a
+   client with no fs: the workspace's tools); okay-remote's "okay-agent · <model>".
 4. AG-UI: the shared events, okay-agent's server, okay-remote's endpoint.
 5. The forecast as an input of the policy.
 

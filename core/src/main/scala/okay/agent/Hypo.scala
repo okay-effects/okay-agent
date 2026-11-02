@@ -7,7 +7,10 @@ import okay.scala3.*
  * calls in Qwen's JSON: `<tool_call>{"name": …, "arguments": …}</tool_call>`), each token a word */
 object Hypo:
   def llm[R[_], Rest[_], A](answer: Ask => String)(p: A ! R)(using Split[Llm, R, Rest]): A ! Rest =
-    Llm.on(Stand(answer))(p)
+    Llm.on(backend(answer))(p)
+
+  /** the hypothesis as a model's backend: for a handler that takes one (the ACP agent's tests) */
+  def backend(answer: Ask => String): Llm.Backend = Stand(answer)
 
   /** a model's turn calling `name` with `args` (JSON text) */
   def call(name: String, args: String): String =

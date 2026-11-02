@@ -14,6 +14,7 @@ import scala.jdk.CollectionConverters.*
   def flag(n: String) = args.indexOf(n) match
     case -1 => None
     case i => args.lift(i + 1)
+  if args.headOption.contains("acp") then Main.acp(args.tail)
   val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
@@ -22,6 +23,7 @@ import scala.jdk.CollectionConverters.*
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
                          |                  [--window N] [--dir D] [--yes] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
+                         |       okay-agent acp [--url U] [--model M]   (an ACP agent over stdio: Zed, okay-remote)
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
@@ -85,6 +87,21 @@ import scala.jdk.CollectionConverters.*
     case Outcome.OutOfBudget(what) => System.err.println(f"out of budget ($what) after $seconds%.1f s"); sys.exit(1)
 
 object Main:
+  /** okay-agent acp: the agent for an ACP client, over stdin and stdout (nothing else written there) */
+  def acp(args: Seq[String]): Nothing =
+    def flag(n: String) = args.indexOf(n) match
+      case -1 => None
+      case i => args.lift(i + 1)
+    val url = flag("--url").orElse(sys.env.get("OKAY_AGENT_URL")).getOrElse("http://127.0.0.1:8090/v1")
+    val model = flag("--model").orElse(sys.env.get("OKAY_AGENT_MODEL")).getOrElse(firstModel(url))
+    val window = Compact.Window(flag("--window").map(_.toInt).getOrElse(32768))
+    val stdout = System.out
+    // stdout is the protocol's: anything printed elsewhere goes to stderr
+    System.setOut(System.err)
+    val in = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
+    AcpAgent(in, line => { stdout.print(line + "\n"); stdout.flush() }, _ => HttpBackend(url, model), window).serve()
+    sys.exit(0)
+
   /** a grep for a symbol that found nothing, with symdex here: the model told where the uses are found — text misses
    * `p.price` for `Pricing.price` (seen: a local model grepped, found nothing, answered wrong) */
   def nudged(call: Call, o: Obs, symdex: Boolean): Obs =

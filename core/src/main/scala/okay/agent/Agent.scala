@@ -41,19 +41,27 @@ object Agent:
   /** THE PROGRAM: ask the model; no call — done; else each call performed, its observation appended; again — until
    * done or out of budget. Each turn's request is the last one with turns appended, never changed before them (the
    * prefix law: the model's cache keeps it) */
-  def run[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): Outcome ! R =
-    loop[Ctx, Outcome, R](ctx) { c =>
-      if c.turns >= c.budget.turns then pure(Right(Outcome.OutOfBudget(s"${c.turns} turns")))
-      else if c.tokens >= c.budget.tokens then pure(Right(Outcome.OutOfBudget(s"${c.tokens} tokens")))
+  def run[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): Outcome ! R = runOn[R](ctx).map(_._1)
+
+  /** the program, and the conversation it ended with: a session's next prompt goes on from it ([[next]]) */
+  def runOn[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): (Outcome, Ctx) ! R =
+    loop[Ctx, (Outcome, Ctx), R](ctx) { c =>
+      if c.turns >= c.budget.turns then pure(Right((Outcome.OutOfBudget(s"${c.turns} turns"), c)))
+      else if c.tokens >= c.budget.tokens then pure(Right((Outcome.OutOfBudget(s"${c.tokens} tokens"), c)))
       else Llm.complete[R](c.ask).flatMap { f =>
         val calls = f.reply.toolCalls.zipWithIndex.map((t, k) => Call(s"call_${c.turns}_$k", t.name, t.arguments))
         val spent = c.copy(messages = c.messages :+ turn(f, calls), turns = c.turns + 1,
           tokens = c.tokens + f.timing.tokens)
-        if calls.isEmpty then pure(Right(Outcome.Done(f.reply.content)))
+        if calls.isEmpty then pure(Right((Outcome.Done(f.reply.content), spent)))
         else each(calls)(call => Tools.perform[R](call).map(o => observation(call, o)))
           .map(obs => Left(spent.copy(messages = spent.messages ++ obs)))
       }
     }
+
+  /** a session's next prompt: the conversation so far, the person's words appended (never changed before them: the
+   * prefix law across prompts), the budget anew */
+  def next(ctx: Ctx, task: String): Ctx =
+    ctx.copy(messages = ctx.messages :+ msg("user", task), turns = 0, tokens = 0)
 
   /** calls one after another, their results in order */
   private def each[A, B, R[_]](as: Vector[A])(f: A => B ! R): Vector[B] ! R =
