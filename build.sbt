@@ -1,6 +1,7 @@
 // okay-agent: a coding agent as one program over effects — the model (okay-llm's Llm), its tools, a person — every
 // world handlers, every guarantee an interceptor with its law. Local models first (okay-mlx). JVM and Scala Native
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
+import scala.scalanative.build.*
 
 ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / organization := "io.github.okay-effects"
@@ -24,6 +25,7 @@ lazy val core = crossProject(JVMPlatform, NativePlatform).crossType(CrossType.Pu
 lazy val cli = crossProject(JVMPlatform, NativePlatform).crossType(CrossType.Pure).in(file("cli")).dependsOn(core)
   .settings(name := "okay-agent-cli", libraryDependencies += munit.value)
   .jvmSettings(run / fork := true, run / connectInput := true, Test / fork := true)
+  .nativeSettings(nativeConfig ~= (_.withEmbedResources(true)))
 
 lazy val root = (project in file(".")).aggregate(
   (core.componentProjects ++ cli.componentProjects).map(p => p: ProjectReference): _*).settings(publish / skip := true)

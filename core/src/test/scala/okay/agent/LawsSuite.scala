@@ -61,6 +61,17 @@ class LawsSuite extends munit.FunSuite:
         case _ => ()
       }
 
+  test("admit sets a plain scalar right: \"True\" for a boolean, \"3\" for a number — then performs it"):
+    val flag = ToolSpec("refs", "References", Json.obj("type" -> Json.Str("object"), "properties" -> Json.obj(
+      "q" -> Json.obj("type" -> Json.Str("string")), "callers" -> Json.obj("type" -> Json.Str("boolean")),
+      "limit" -> Json.obj("type" -> Json.Str("integer"))), "required" -> Json.arr(Json.Str("q"))), ToolSpec.Kind.Read)
+    val script = Iterator(Hypo.call("refs", """{"q": "x", "callers": "True", "limit": "3"}"""),
+      Hypo.call("refs", """{"q": "x", "callers": "maybe"}"""), "Done.")
+    val (performed, _) = run(Human.by(_ => "y")(Tools.recorded(world)(Hypo.llm(_ => script.next())(
+      Admit.within[Row, Outcome](Vector(flag))(Agent.run[Row](Agent.start("go", Vector(flag))))))))
+    assertEquals(performed.map(_.args), Vector(Json.obj("q" -> Json.Str("x"), "callers" -> Json.Bool(true),
+      "limit" -> Json.num(3))))   // the second, "maybe", not a boolean: refused, never performed
+
   test("the gate: a call of a kind asked about goes on a yes; on a no the model observes it, the world never sees it"):
     val answers = Iterator("y", "no, not that file")
     val script = Iterator(Hypo.call("write", """{"path": "a", "content": "1"}"""),

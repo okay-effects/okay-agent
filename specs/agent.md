@@ -97,6 +97,11 @@ States only through real transitions (the program run on a hypothesis's random a
    `Journal.recording`, `Replay.from` (strict, no model, no world), law: the same acts and end (200 runs). CLI:
    `--window`, the journal in ~/.okay-agent/journals, `--replay`. On Qwen3.6: compacted mid-task, finished right, the
    head still cached (885 of 1043).
+2b. MCP with no setting — done 2026-11-02: the project's `.mcp.json` servers and symdex (where an index is, symdex
+   installed: `symdex serve --root <ws> --lean`) started, their tools the agent's (symdex's read-only, others asked
+   about); `symdex_setup` (sbt: its plugin, `sbt symdexIndex symdexMcp`); a system note and a nudge on a symbol grep
+   that found nothing. Admit sets plain scalars right ("True" → true, "3" → 3). On Qwen3.6: set symdex up in one turn
+   (33 s); the next run answered with `implementations` and `references` (a grep had missed `p.price`).
 3. ACP: okay-agent in okay-remote, with the policy and the phone.
 4. AG-UI: the shared events, okay-agent's server, okay-remote's endpoint.
 5. The forecast as an input of the policy.

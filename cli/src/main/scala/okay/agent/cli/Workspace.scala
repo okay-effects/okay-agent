@@ -65,7 +65,10 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 60, limit: Int = 200
       Files.writeString(f, text.substring(0, at) + neu + text.substring(at + old.length), UTF_8)
       Obs(s"edited ${rel(f)}")
 
-  private def bash(command: String) =
+  private def bash(command: String) = run(command, timeoutSeconds)
+
+  /** a command in the workspace, with a timeout of its own */
+  def run(command: String, timeoutSeconds: Int): Obs =
     val pb = ProcessBuilder("/bin/sh", "-c", command).directory(real.toFile).redirectErrorStream(true)
     val proc = pb.start()
     val out = java.io.ByteArrayOutputStream()
@@ -82,9 +85,10 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 60, limit: Int = 200
       val code = proc.exitValue()
       Obs(cut(out.toString(UTF_8)) + (if code == 0 then "" else s"\n(exit $code)"), error = code != 0)
 
+  /** the project's files: not the build's output, not a tool's own (target, node_modules, .git, .bsp …) */
   private def files: Vector[Path] =
     Files.walk(real).iterator.asScala.filter(Files.isRegularFile(_))
-      .filterNot(p => real.relativize(p).iterator.asScala.exists(_.toString.startsWith(".git"))).toVector
+      .filterNot(p => real.relativize(p).iterator.asScala.exists(n => Workspace.skipped(n.toString))).toVector
 
   private def glob(pattern: String) =
     val re = Workspace.globRegex(pattern)
@@ -95,7 +99,10 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 60, limit: Int = 200
     val re = pattern.r
     val only = in.map(Workspace.globRegex)
     val hits = files.filter(p => only.forall(_.matches(rel(p)))).iterator.flatMap { p =>
-      val lines = try Files.readAllLines(p, UTF_8).asScala catch case _: Exception => Nil
+      // text alone: a file with a NUL in its first KB is a binary's
+      val head = try Files.newInputStream(p).readNBytes(1024) catch case _: Exception => Array.emptyByteArray
+      val lines = if head.contains(0.toByte) then Nil
+        else try Files.readAllLines(p, UTF_8).asScala catch case _: Exception => Nil
       lines.iterator.zipWithIndex.collect { case (l, i) if re.findFirstIn(l).isDefined => s"${rel(p)}:${i + 1}: $l" }
     }.take(200).toVector
     Obs(if hits.isEmpty then "no match" else cut(hits.mkString("\n")))
@@ -105,6 +112,11 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 60, limit: Int = 200
     if added.error then added else bash(s"git commit -q -m ${Workspace.quote(message)} && git log --oneline -1")
 
 object Workspace:
+  /** directories the search tools pass over: build output and tools' own */
+  def skipped(name: String): Boolean =
+    name.startsWith(".git") || Set("target", "node_modules", ".bsp", ".idea", ".metals", ".bloop", "dist", "out",
+      ".symdex")(name)
+
   /** a glob as a regex: `**` any depth, `*` within a name, `?` one character (RE2's syntax: Scala Native's too) */
   def globRegex(glob: String): scala.util.matching.Regex =
     val sb = new StringBuilder

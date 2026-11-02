@@ -33,8 +33,10 @@ object Agent:
       |- Prefer `edit` (replace an exact fragment) over rewriting a whole file.
       |- When the task is done, answer in a few sentences with no tool call: that ends the run.""".stripMargin
 
-  def start(task: String, tools: Vector[ToolSpec], budget: Budget = Budget()): Ctx =
-    Ctx(Vector(msg("system", system), msg("user", task)), tools, budget)
+  /** `notes`: lines added to the system prompt — what the tools offered this run are for */
+  def start(task: String, tools: Vector[ToolSpec], budget: Budget = Budget(), notes: Vector[String] = Vector.empty)
+      : Ctx =
+    Ctx(Vector(msg("system", (system +: notes.map("- " + _)).mkString("\n")), msg("user", task)), tools, budget)
 
   /** THE PROGRAM: ask the model; no call — done; else each call performed, its observation appended; again — until
    * done or out of budget. Each turn's request is the last one with turns appended, never changed before them (the

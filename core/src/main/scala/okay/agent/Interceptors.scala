@@ -5,11 +5,17 @@ import okay.scala3.*
 
 /** ADMIT: a call is performed only if its tool was offered and its arguments fit the tool's schema; else the model
  * observes why — the call never reaches the world. A local model calls tools it was not offered, or with arguments
- * astray, within minutes: repaired into an observation, not performed */
+ * astray, within minutes: repaired into an observation, not performed. A scalar of the wrong type but plain meaning
+ * — "true" for a boolean, "3" for a number (Qwen writes Python's True) — is set right first, not refused */
 object Admit:
   def within[R[_], A](tools: Vector[ToolSpec])(p: A ! R)(using In[Tools, R]): A ! R =
     around[Tools, R, A](p)([X] => (op: Tools[X], proceed: X ! R) => op match
-      case Tools.Perform(call) => refusal(tools, call).fold(proceed)(why => pure(Obs(why, error = true))))
+      case Tools.Perform(call) =>
+        val set = tools.find(_.name == call.name)
+          .fold(call)(t => call.copy(args = Schema.coerce(t.parameters, call.args)))
+        refusal(tools, set) match
+          case Some(why) => pure(Obs(why, error = true))
+          case None => if set == call then proceed else Tools.perform[R](set))
 
   /** why a call is not admitted, if it is not */
   def refusal(tools: Vector[ToolSpec], call: Call): Option[String] =
@@ -28,6 +34,20 @@ object Schema:
         .orElse(present.collectFirst { case (n, v) if props.get(n).exists(p => !fits(p, v)) =>
           s"the argument '$n' is not a ${props(n).field("type").map(_.render).getOrElse("value")}" })
     case _ => Some("the arguments are not an object")
+
+  /** the arguments with a string set to the boolean or number its property wants, where it plainly is one */
+  def coerce(schema: Json, args: Json): Json = args match
+    case Json.Obj(fields) =>
+      val props = schema.field("properties").map(_.record.toMap).getOrElse(Map.empty)
+      Json.Obj(fields.map { (n, v) =>
+        (props.get(n).flatMap(_.field("type")), v) match
+          case (Some(Json.Str("boolean")), Json.Str(s)) if Set("true", "false")(s.trim.toLowerCase) =>
+            n -> Json.Bool(s.trim.toLowerCase == "true")
+          case (Some(Json.Str("integer" | "number")), Json.Str(s)) if s.trim.toDoubleOption.isDefined =>
+            n -> Json.num(s.trim.toDouble)
+          case _ => n -> v
+      })
+    case other => other
 
   private def fits(prop: Json, v: Json): Boolean = prop.field("type") match
     case Some(Json.Str(t)) => (t, v) match
