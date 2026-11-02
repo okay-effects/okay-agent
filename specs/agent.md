@@ -87,12 +87,20 @@ States only through real transitions (the program run on a hypothesis's random a
   `rawInput.command` — what the client's requests carry, so a request finds its call — then `tool_call_update`), the
   model's words as `agent_message_chunk`. A session's prompts go on in one conversation (`Agent.runOn` gives the
   conversation it ended with, `Agent.next` appends the next prompt: the prefix law across prompts). `session/cancel`
-  seen between steps: the prompt ends `cancelled`. One thread: requests of the agent's answered while it waits.
+  seen between steps: the prompt ends `cancelled`; seen during a command, the command killed (`terminal/kill`) at
+  once. A command runs `--timeout` seconds at most (300 by default, the CLI's and serve's too): a watchdog kills it,
+  the model observes "(stopped after Ns)". The model's words go out as they come (`Words.streamed`: each piece of a
+  turn's text, its thinking and tool calls' text left out by okay-llm's `Streamer`), not again whole at the end. Each
+  prompt journalled (a file a prompt in ~/.okay-agent/journals, its start carrying the conversation it began with:
+  `--replay` replays a session's later prompt alone). `--forecast N`: a call with something risky ahead asked
+  through `session/request_permission` (its kind, its `rawInput` as the client's gate reads it), the forecast said
+  first as the agent's words. One thread: requests of the agent's answered while it waits; a watchdog's kill sent
+  from its own (sending is one line at a time).
 - **AG-UI** — `okay-agent serve [--port 8091] [--dir D] [--yes]`: `POST /agent` (RunAgentInput) answered with the
   run's events as SSE (okay-llm's `AgUi`, AG-UI 1.0), any AG-UI client a front end. An AG-UI thread is one
   conversation kept here (`Agent.runOn`/`next`: the prefix law across runs); a thread's first run keeps the user and
   assistant texts the client sent before. Each call shown (TOOL_CALL_START/ARGS/END before, TOOL_CALL_RESULT after),
-  the model's words between calls and its last as a text message. A call to be asked about (writes, commands, commits
+  the model's words streamed as they come (a message: its start, each piece, its end). A call to be asked about (writes, commands, commits
   unless `--yes`) ends the run with an interrupt (`outcome: interrupt`, reason `approval`, its `toolCallId`, payload
   `{approved, reason?}`); the program waits for it ALIVE on its thread — no replay — and the next run's `resume`
   answers it, the program going on, its events on that run's stream (no answer in 30 minutes: the run cancelled). A

@@ -5,8 +5,8 @@ import okay.agent.{Call, Obs, ToolSpec}
 
 /** A PROJECT the agent works in, as a server's session has it: the workspace, the project's MCP servers (its
  * .mcp.json, symdex where an index is) started, the tools offered, the notes on them; a call performed here */
-final class Project(val root: Path, mcp: Path => Vector[Mcp.Server]):
-  val ws: Workspace = Workspace(root)
+final class Project(val root: Path, mcp: Path => Vector[Mcp.Server], timeoutSeconds: Int = 300):
+  val ws: Workspace = Workspace(root, timeoutSeconds)
   val (servers, served, routes) = Mcp.attach(root, mcp(root), Workspace.tools.map(_.name).toSet, _ => ())
   val symdex: Boolean = servers.exists(_.name == "symdex")
   val tools: Vector[ToolSpec] = Workspace.tools ++ served

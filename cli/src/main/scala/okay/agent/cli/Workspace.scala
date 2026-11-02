@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 /** THE TOOLS OF A WORKSPACE: files read, written and edited inside it alone (a path out of it refused), commands run
  * in it with a timeout, files found by glob and by a regex, the work committed. Outputs cut to what a local model's
  * window takes */
-final class Workspace(val root: Path, timeoutSeconds: Int = 60, limit: Int = 20000):
+final class Workspace(val root: Path, timeoutSeconds: Int = 300, limit: Int = 20000):
   private val real = root.toRealPath()
 
   def perform(call: Call): Obs =

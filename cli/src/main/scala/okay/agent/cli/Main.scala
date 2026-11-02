@@ -16,32 +16,22 @@ import scala.jdk.CollectionConverters.*
     case i => args.lift(i + 1)
   if args.headOption.contains("acp") then Main.acp(args.tail)
   if args.headOption.contains("serve") then Main.serve(args.tail)
-  val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast")
+  val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast",
+    "--timeout")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
   val replay = flag("--replay")
   if task.isEmpty && replay.isEmpty then
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
-                         |                  [--window N] [--dir D] [--yes] [--forecast N] "<task>"
+                         |                  [--window N] [--dir D] [--yes] [--forecast N] [--timeout S] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
-                         |       okay-agent acp [--url U] [--model M]   (an ACP agent over stdio: Zed, okay-remote)
+                         |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
     val entries = java.nio.file.Files.readAllLines(Path.of(file)).asScala.toVector.filter(_.nonEmpty).map(Json.fromText)
-    val start = entries.find(_("k").string == "start").getOrElse(sys.error(s"$file: no start entry"))
-    val offered = start.field("tools").map(_.list.map(Main.specOf)).getOrElse(Workspace.tools)
-    val notes = start.field("notes").map(_.list.map(_.string)).getOrElse(Vector.empty)
-    val ctx = Agent.start(start("task").string, offered, Budget(start("turns").int, start("tokens").int), notes)
-    type Replayed[X] = (Llm + Tools + Human + Console)[X]
-    // a run with forecasts: their turns in the journal too, read in the same places (nobody asked: the answers are
-    // the acts written)
-    val horizon = start.field("forecast").map(_.int).getOrElse(0)
-    val core = Main.shown[Replayed, Outcome](Admit.within[Replayed, Outcome](offered)(Agent.run[Replayed](ctx)))
-    val program = if horizon == 0 then core
-      else Forecast.gate[Replayed, Outcome](offered, horizon, Main.imagined, Some((_, _, _) => false))(core)
-    val outcome = run(Console.stdout(Human.by(_ => "n")(Replay.from(entries)(program))))
+    val outcome = Main.replayed(entries, println)
     println(s"\nreplayed: $outcome")
     sys.exit(0)
   }
@@ -53,7 +43,9 @@ import scala.jdk.CollectionConverters.*
   // --forecast N: before a call that is not a read, what comes after it forecast (N turns, the model the same, the
   // calls imagined, reads real); asked only when it or what comes is risky
   val horizon = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0)
-  val workspace = Workspace(flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath)
+  // a command's time at most (a build's test run takes minutes)
+  val timeout = flag("--timeout").map(_.toInt).getOrElse(300)
+  val workspace = Workspace(flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath, timeout)
   // the project's MCP servers, with no setting: its .mcp.json, and symdex where there is an index for it
   val (servers, served, routes) = Mcp.attach(workspace.root, Mcp.found(workspace.root),
     Workspace.tools.map(_.name).toSet, m => System.err.println(m))
@@ -102,6 +94,24 @@ import scala.jdk.CollectionConverters.*
     case Outcome.OutOfBudget(what) => System.err.println(f"out of budget ($what) after $seconds%.1f s"); sys.exit(1)
 
 object Main:
+  type Replayed[X] = (Llm + Tools + Human + Console)[X]
+  /** a run again from its journal, no model, no world: from its start's conversation (a session's later prompt) or
+   * its task; its forecasts' turns read in place; the lines shown given to `line` */
+  def replayed(entries: Vector[Json], line: String => Unit): Outcome =
+    val start = entries.find(_("k").string == "start").getOrElse(sys.error("no start entry"))
+    val offered = start.field("tools").map(_.list.map(Main.specOf)).getOrElse(Workspace.tools)
+    val notes = start.field("notes").map(_.list.map(_.string)).getOrElse(Vector.empty)
+    val budget = Budget(start("turns").int, start("tokens").int)
+    val ctx = start.field("messages").map(ms => Ctx(ms.list, offered, budget))
+      .getOrElse(Agent.start(start("task").string, offered, budget, notes))
+    // a run with forecasts: their turns in the journal too, read in the same places (nobody asked: the answers are
+    // the acts written)
+    val horizon = start.field("forecast").map(_.int).getOrElse(0)
+    val core = Main.shown[Replayed, Outcome](Admit.within[Replayed, Outcome](offered)(Agent.run[Replayed](ctx)))
+    val program = if horizon == 0 then core
+      else Forecast.gate[Replayed, Outcome](offered, horizon, Main.imagined, Some((_, _, _) => false))(core)
+    run(AgUiServer.lines(line)(Human.by(_ => "n")(Replay.from(entries)(program))))
+
   /** a call the forecast does not make: taken as done */
   def imagined(c: Call): Obs = Obs(s"(forecast: ${c.name} not performed; take it as done)")
 
@@ -117,7 +127,8 @@ object Main:
     val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
     val server = AgUiServer(root, () => HttpBackend(url, model), ask,
       Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)),
-      forecast = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0))
+      forecast = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0),
+      timeoutSeconds = flag("--timeout").map(_.toInt).getOrElse(300))
     System.err.println(s"okay-agent · $model · $root · AG-UI: POST /agent")
     okay.llm.Server.run(flag("--port").map(_.toInt).getOrElse(8091))(server.serve)
     sys.exit(0)
@@ -134,7 +145,9 @@ object Main:
     // stdout is the protocol's: anything printed elsewhere goes to stderr
     System.setOut(System.err)
     val in = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
-    AcpAgent(in, line => { stdout.print(line + "\n"); stdout.flush() }, _ => HttpBackend(url, model), window).serve()
+    AcpAgent(in, line => { stdout.print(line + "\n"); stdout.flush() }, _ => HttpBackend(url, model), window,
+      timeoutSeconds = flag("--timeout").map(_.toInt).getOrElse(300),
+      forecast = flag("--forecast").map(_.toInt).getOrElse(0)).serve()
     sys.exit(0)
 
   /** a grep for a symbol that found nothing, with symdex here: the model told where the uses are found — text misses

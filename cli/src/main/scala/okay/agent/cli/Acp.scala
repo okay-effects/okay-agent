@@ -17,8 +17,11 @@ import scala.collection.mutable
  * waits, a cancel seen between steps */
 final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm.Backend,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(),
-    mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root)):
+    mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), timeoutSeconds: Int = 300, forecast: Int = 0,
+    journal: Path => Option[Path] = root => Some(Main.journalFile(root))):
   private var nextId = 0
+  /** the command the client runs now (its session, its terminal): killed on a cancel, or when it runs too long */
+  @volatile private var running: Option[(String, Json)] = None
   private val queued = mutable.Queue.empty[Json]
   private var fs = false
   private var term = false
@@ -27,7 +30,8 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
       val routes: Map[String, (McpServer, String)], val servers: Vector[McpServer], var ctx: Option[Ctx] = None)
   private val sessions = mutable.Map.empty[String, Session]
 
-  private def send(j: Json): Unit = out(j.render)
+  // sent from the loop, and from a command's watchdog: one line at a time
+  private def send(j: Json): Unit = synchronized(out(j.render))
   private def reply(id: Json, result: Json): Unit =
     send(Json.obj("jsonrpc" -> Json.Str("2.0"), "id" -> id, "result" -> result))
   private def fail(id: Json, code: Int, message: String): Unit = send(Json.obj("jsonrpc" -> Json.Str("2.0"),
@@ -40,14 +44,22 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
     scala.util.Try(Json.fromText(line)).getOrElse(Json.obj())
   }
   private def seen(j: Json): Unit =
-    if j.field("method").contains(Json.Str("session/cancel")) then cancelled = true else queued.enqueue(j)
+    if j.field("method").contains(Json.Str("session/cancel")) then { cancelled = true; kill() }
+    else if j.field("method").isDefined then queued.enqueue(j)
+    // else: an answer no one waits for (a kill's)
+
+  /** the running command killed: its wait ends (a notification of ours, its answer not waited for) */
+  private def kill(): Unit = running.foreach { (sid, t) =>
+    val id = synchronized { nextId += 1; nextId }
+    send(Json.obj("jsonrpc" -> Json.Str("2.0"), "id" -> Json.num(id), "method" -> Json.Str("terminal/kill"),
+      "params" -> Json.obj("sessionId" -> Json.Str(sid), "terminalId" -> t)))
+  }
   /** what came in while the agent worked (the model's turn, a command): read without waiting */
   private def drain(): Unit = while in.ready() do read().foreach(seen)
 
   /** a request of the agent's to the client, its result when it comes (other messages kept meanwhile) */
   private def request(method: String, params: Json): Either[String, Json] =
-    nextId += 1
-    val id = nextId
+    val id = synchronized { nextId += 1; nextId }
     send(Json.obj("jsonrpc" -> Json.Str("2.0"), "id" -> Json.num(id), "method" -> Json.Str(method),
       "params" -> params))
     var answer: Option[Either[String, Json]] = None
@@ -80,7 +92,7 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
         "agentInfo" -> Json.obj("name" -> Json.Str("okay-agent"), "version" -> Json.Str("0.1.0")))))
     case "session/new" =>
       val root = Path.of(p.field("cwd").collect { case Json.Str(c) => c }.getOrElse(".")).toAbsolutePath
-      val ws = Workspace(root)
+      val ws = Workspace(root, timeoutSeconds)
       val (servers, served, routes) = Mcp.attach(root, mcp(root), Workspace.tools.map(_.name).toSet, _ => ())
       val symdexHere = servers.exists(_.name == "symdex")
       val notes = if symdexHere then Vector(Project.symdexNote) else Vector.empty
@@ -100,24 +112,44 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
     case "session/cancel" => cancelled = true
     case other => id.foreach(fail(_, -32601, s"okay-agent does not do $other"))
 
-  /** one prompt: the program on the session's conversation; why it stopped, as ACP names it */
+  /** one prompt: the program on the session's conversation, journalled (a file a prompt, its conversation so far
+   * in its start: replayed alone); with a forecast, a call with something risky ahead asked through the client (the
+   * forecast said first); why it stopped, as ACP names it */
   private def prompt(s: Session, text: String): String =
     current = Some(s)
     val ctx = s.ctx.fold(Agent.start(text, s.tools, budget, s.notes))(c => Agent.next(c, text))
-    type Row[X] = (Llm + Tools + Console)[X]
-    val program = Admit.within[Row, (Outcome, Ctx)](s.tools)(shown[Row, (Outcome, Ctx)](
+    type Row[X] = (Llm + Tools + Human + Console + Journal)[X]
+    val inner = Admit.within[Row, (Outcome, Ctx)](s.tools)(shown[Row, (Outcome, Ctx)](
       Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx))))
+    def imagine(c: Call): Obs = if s.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
+      perform(s)(c) else Main.imagined(c)
+    val program = Journal.recording[Row, (Outcome, Ctx)](
+      if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](s.tools, forecast, imagine)(inner) else inner)
+    val file = journal(s.ws.root)
+    val out = file.map(f => java.io.PrintWriter(java.nio.file.Files.newBufferedWriter(f)))
+    out.foreach(_.println(Json.obj("k" -> Json.Str("start"), "task" -> Json.Str(text),
+      "turns" -> Json.num(ctx.budget.turns), "tokens" -> Json.num(ctx.budget.tokens),
+      "tools" -> Json.Arr(s.tools.map(Main.specJson)), "notes" -> Json.Arr(s.notes.map(Json.Str(_))),
+      "forecast" -> Json.num(forecast), "messages" -> Json.Arr(ctx.messages)).render))
+    // the person, asked through the client: the forecast said, then its permission asked for the call
+    def person(question: String): String =
+      val call = lastCall.getOrElse(Call("forecast", "forecast", Json.Obj.empty))
+      said(s.id, question.replace("allow? [y/N]", "").trim + "\n")
+      val (kind, title) = Acp.kindOf(call)
+      if permission(s, call.id, title, kind, rawInput(call)) then "y" else "n"
     try
-      val (outcome, end) = run(updates(s.id)(Tools.by(perform(s))(Llm.on(model(s.ws.root))(program))))
+      val (outcome, end) = run(Journal.to(e => out.foreach { o => o.println(e.render); o.flush() })(
+        updates(s.id)(Human.by(person)(Tools.by(perform(s))(Llm.on(model(s.ws.root))(program))))))
       s.ctx = Some(end)
       outcome match
-        case Outcome.Done(words) => if words.trim.nonEmpty then said(s.id, words.trim); "end_turn"
+        case Outcome.Done(words) => if words.trim.nonEmpty && !lastStreamed then said(s.id, words.trim); "end_turn"
         case Outcome.OutOfBudget(_) => "max_turn_requests"
     catch case Acp.Cancelled =>
       // the conversation as it was, the person's words and the stop kept in it
       s.ctx = Some(ctx.copy(messages = ctx.messages :+ Json.obj("role" -> Json.Str("assistant"),
         "content" -> Json.Str("(cancelled)"))))
       "cancelled"
+    finally out.foreach(_.close())
 
   private def said(sid: String, text: String): Unit =
     update(sid, Json.obj("sessionUpdate" -> Json.Str("agent_message_chunk"),
@@ -133,19 +165,18 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
   /** each call shown to the client before it runs and when it ended; the model's words between calls; a cancel
    * honoured before the model's next turn */
   private def shown[R[_], A](p: A ! R)(using In[Llm, R], In[Tools, R], In[Console, R]): A ! R =
-    val turns = around[Llm, R, A](p)([X] => (op: Llm[X], proceed: X ! R) => op match
+    def chunk(t: String) = Console.line[R](Json.obj("sessionUpdate" -> Json.Str("agent_message_chunk"),
+      "content" -> Json.obj("type" -> Json.Str("text"), "text" -> Json.Str(t))).render)
+    // the model's words as they come; a turn's end, a line after them
+    val words = Words.streamed[R, A](chunk, any => { lastStreamed = any; if any then chunk("\n") else unit[R] })(p)
+    val turns = around[Llm, R, A](words)([X] => (op: Llm[X], proceed: X ! R) => op match
       case Llm.Start(_) =>
         drain()
         if cancelled then throw Acp.Cancelled else proceed
-      case Llm.Finish(_) => proceed.flatMap { f =>
-        val words = f.reply.content.trim
-        if words.isEmpty || f.reply.toolCalls.isEmpty then pure(f)
-        else Console.line[R](Json.obj("sessionUpdate" -> Json.Str("agent_message_chunk"),
-          "content" -> Json.obj("type" -> Json.Str("text"), "text" -> Json.Str(words + "\n"))).render).as(f)
-      }
       case _ => proceed)
     around[Tools, R, A](turns)([X] => (op: Tools[X], proceed: X ! R) => op match
       case Tools.Perform(call) =>
+        lastCall = Some(call)
         Console.line[R](Acp.toolCall(call, rawInput(call)).render).andThen(proceed.flatMap { o =>
           Console.line[R](Json.obj("sessionUpdate" -> Json.Str("tool_call_update"),
             "toolCallId" -> Json.Str(call.id), "status" -> Json.Str(if o.error then "failed" else "completed"),
@@ -156,6 +187,10 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
   /** a call's input as the client's gate reads it: an absolute `file_path`, a `command` — the same as its fs and
    * terminal requests carry, so a request is matched to the call it came from */
   private var current: Option[Session] = None
+  /** the call shown last: the one a forecast's question is about */
+  private var lastCall: Option[Call] = None
+  /** whether the last turn's words went out as they came (then not again at the end) */
+  private var lastStreamed = false
   private def rawInput(call: Call): Json =
     def str(k: String) = call.args.field(k).collect { case Json.Str(v) => v }
     val path = current.flatMap(s => str("path").flatMap(p => scala.util.Try(s.ws.inside(p).toString).toOption))
@@ -195,11 +230,14 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
     }
       .orElse(Option.when(call.name == Symdex.spec.name)(Symdex.setup(s.ws)))
 
-  private def allowed(s: Session, call: Call): Boolean =
+  private def allowed(s: Session, call: Call): Boolean = permission(s, call.id, call.name, "other", call.args)
+
+  /** the client asked whether a call may go on: allowed or not */
+  private def permission(s: Session, callId: String, title: String, kind: String, input: Json): Boolean =
     def option(id: String, kind: String) = Json.obj("optionId" -> Json.Str(id), "name" -> Json.Str(id),
       "kind" -> Json.Str(kind))
-    request("session/request_permission", Json.obj(sid(s), "toolCall" -> Json.obj("toolCallId" -> Json.Str(call.id),
-      "title" -> Json.Str(call.name), "kind" -> Json.Str("other"), "rawInput" -> call.args),
+    request("session/request_permission", Json.obj(sid(s), "toolCall" -> Json.obj("toolCallId" -> Json.Str(callId),
+      "title" -> Json.Str(title), "kind" -> Json.Str(kind), "rawInput" -> input),
       "options" -> Json.arr(option("allow", "allow_once"), option("reject", "reject_once")))).toOption
       .flatMap(_.field("outcome")).flatMap(_.field("optionId")).contains(Json.Str("allow"))
 
@@ -231,12 +269,24 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
       case Left(why) => Obs(why, error = true)
       case Right(r) =>
         val t = "terminalId" -> r("terminalId")
-        val code = request("terminal/wait_for_exit", Json.obj(sid(s), t)).toOption
-          .flatMap(_.field("exitCode")).collect { case Json.Num(n) => n.toInt }.getOrElse(1)
+        // a watchdog: the command killed after `timeoutSeconds` (the client's terminal has no timeout of its own)
+        @volatile var over = false
+        @volatile var timedOut = false
+        running = Some((s.id, r("terminalId")))
+        val dog = Thread(() =>
+          val until = System.currentTimeMillis() + timeoutSeconds * 1000L
+          while !over && System.currentTimeMillis() < until do Thread.sleep(200)
+          if !over then { timedOut = true; kill() })
+        dog.setDaemon(true)
+        dog.start()
+        val code = try request("terminal/wait_for_exit", Json.obj(sid(s), t)).toOption
+            .flatMap(_.field("exitCode")).collect { case Json.Num(n) => n.toInt }.getOrElse(1)
+          finally { over = true; running = None }
         val text = request("terminal/output", Json.obj(sid(s), t)).toOption
           .flatMap(_.field("output")).collect { case Json.Str(o) => o }.getOrElse("")
         request("terminal/release", Json.obj(sid(s), t))
-        Obs(text + (if code == 0 then "" else s"\n(exit $code)"), error = code != 0)
+        if timedOut then Obs(text + s"\n(stopped after ${timeoutSeconds}s)", error = true)
+        else Obs(text + (if code == 0 then "" else s"\n(exit $code)"), error = code != 0)
 
 object Acp:
   case object Cancelled extends Exception("cancelled")
@@ -246,14 +296,17 @@ object Acp:
 
   /** a call as ACP shows it: its kind (what it does to the world), a title by the names policies use */
   def toolCall(call: Call, input: Json): Json =
-    val (kind, title) = call.name match
-      case "read" => ("read", "Read")
-      case "write" => ("edit", "Write")
-      case "edit" => ("edit", "Edit")
-      case "bash" | "git_commit" => ("execute", "Bash")
-      case "glob" => ("search", "Glob")
-      case "grep" => ("search", "Grep")
-      case other => ("other", other)
+    val (kind, title) = kindOf(call)
     Json.Obj(Vector("sessionUpdate" -> Json.Str("tool_call"), "toolCallId" -> Json.Str(call.id),
       "title" -> Json.Str(title), "kind" -> Json.Str(kind), "status" -> Json.Str("pending"), "rawInput" -> input) ++
       input.field("file_path").map(p => "locations" -> Json.arr(Json.obj("path" -> p))).toVector)
+
+  /** a call's kind as ACP names it, and its title by the names policies use */
+  def kindOf(call: Call): (String, String) = call.name match
+    case "read" => ("read", "Read")
+    case "write" => ("edit", "Write")
+    case "edit" => ("edit", "Edit")
+    case "bash" | "git_commit" => ("execute", "Bash")
+    case "glob" => ("search", "Glob")
+    case "grep" => ("search", "Grep")
+    case other => ("other", other)

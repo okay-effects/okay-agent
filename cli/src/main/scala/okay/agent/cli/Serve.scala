@@ -16,8 +16,9 @@ import scala.collection.mutable
  * answers it, the program going on, its events on the new run's stream. A client gone mid-run cancels it */
 final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind => Boolean,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(), forecast: Int = 0,
-    mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), waitFor: Long = 30 * 60 * 1000L):
-  lazy val project: Project = Project(root, mcp)
+    mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), waitFor: Long = 30 * 60 * 1000L,
+    timeoutSeconds: Int = 300):
+  lazy val project: Project = Project(root, mcp, timeoutSeconds)
 
   /** where a run's events go: a response's stream, until the run ends or pauses */
   private final class Sink(out: OutputStream, val runId: String):
@@ -108,7 +109,9 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
           t.waiting = None
           throw AgUiServer.Cancelled
     type Row[X] = (Llm + Tools + Human + Console)[X]
-    val events = AgUiServer.events[Row, (Outcome, Ctx)](call => lastCall = Some(call), message) _
+    var lastStreamed = false
+    val events = AgUiServer.events[Row, (Outcome, Ctx)](call => lastCall = Some(call), message,
+      any => lastStreamed = any) _
     // the innermost interceptor sees a call first: shown, then admitted, then gated
     val inner = Admit.within[Row, (Outcome, Ctx)](project.tools)(
       events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx))))
@@ -123,7 +126,7 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
         Tools.by { c => check(); project.perform(c) }(Llm.on(model())(prog)))))
       t.ctx = Some(end)
       outcome match
-        case Outcome.Done(words) => AgUi.text(message(), words.trim).foreach(emit)
+        case Outcome.Done(words) => if !lastStreamed then AgUi.text(message(), words.trim).foreach(emit)
         case Outcome.OutOfBudget(what) => AgUi.text(message(), s"(out of budget: $what)").foreach(emit)
       emit(AgUi.runFinished(t.id, t.sink.runId))
     catch
@@ -154,18 +157,21 @@ object AgUiServer:
         Json.obj("role" -> m("role"), "content" -> m("content")) }
     c.copy(messages = c.messages.head +: (before :+ c.messages.last))
 
-  /** the program's steps as AG-UI events (each a Console line: an event's JSON): the model's words between calls,
+  /** the program's steps as AG-UI events (each a Console line: an event's JSON): the model's words as they come,
    * each call (its start, arguments, end) before it runs, its result after */
-  def events[R[_], A](called: String => Unit, message: () => String)(p: A ! R)
+  def events[R[_], A](called: String => Unit, message: () => String, streamed: Boolean => Unit)(p: A ! R)
       (using In[Llm, R], In[Tools, R], In[Console, R]): A ! R =
     def out(es: Vector[Json]): Unit ! R =
       es.foldLeft(unit[R])((acc, e) => acc.andThen(Console.line[R](e.render)))
-    val turns = around[Llm, R, A](p)([X] => (op: Llm[X], proceed: X ! R) => op match
-      case Llm.Finish(_) => proceed.flatMap { f =>
-        val words = f.reply.content.trim
-        if words.isEmpty || f.reply.toolCalls.isEmpty then pure(f) else out(AgUi.text(message(), words)).as(f)
-      }
-      case _ => proceed)
+    // the model's words as they come: a message started at its first piece, ended with the turn
+    var id = ""
+    val turns = Words.streamed[R, A](t => {
+        val start = if id.isEmpty then { id = message(); Vector(AgUi.textStart(id)) } else Vector.empty
+        out(start :+ AgUi.textContent(id, t))
+      }, any => {
+        streamed(any)
+        if id.isEmpty then unit[R] else { val e = AgUi.textEnd(id); id = ""; out(Vector(e)) }
+      })(p)
     around[Tools, R, A](turns)([X] => (op: Tools[X], proceed: X ! R) => op match
       case Tools.Perform(call) =>
         called(call.id)

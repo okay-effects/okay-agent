@@ -66,11 +66,16 @@ class ServeSuite extends munit.FunSuite:
     assertEquals(Files.readString(root.resolve("a.txt")), "bye")
     assertEquals(types(second).head, "RUN_STARTED")
     assertEquals(second.last("outcome")("type").string, "success")
-    assert(second.exists(e => e("type") == Json.Str("TEXT_MESSAGE_CONTENT") && e("delta") == Json.Str("changed it")))
+    // the words as they came: one message, a piece at a time
+    def text(es: Vector[Json]) = es.filter(_("type") == Json.Str("TEXT_MESSAGE_CONTENT")).map(_("delta").string)
+    assert(text(second).size > 1)
+    assertEquals(text(second).mkString, "changed it")
+    assertEquals(second.count(_("type") == Json.Str("TEXT_MESSAGE_START")), 1)
+    assertEquals(second.count(_("type") == Json.Str("TEXT_MESSAGE_END")), 1)
     assertEquals(second.filter(_("type") == Json.Str("TOOL_CALL_RESULT")).map(_("content").string),
       Vector("edited a.txt", "bye"))
     val third = post(port, input("t1", "r3", "and now?"))
-    assert(third.exists(e => e("delta") == Json.Str("remembered 1 earlier prompt")), third.toString)
+    assertEquals(text(third).mkString, "remembered 1 earlier prompt")
 
   test("a write refused: the model told why, the file as it was"):
     val (root, port) = start()
