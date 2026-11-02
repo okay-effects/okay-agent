@@ -13,7 +13,8 @@ import scala.collection.mutable
  * written through the client (`fs/read_text_file`, `fs/write_text_file`), its commands run by the client (the
  * `terminal/...` requests) — so the client's gate weighs each, as it does any ACP agent's; each call shown to it
  * (`tool_call`, `tool_call_update`), the model's words too (`agent_message_chunk`). A session's prompts go on in
- * one conversation (the prefix kept: the model's cache too). One thread: a request of its own answered while it waits, a cancel seen between steps */
+ * one conversation (the prefix kept: the model's cache too). One thread: a request of its own answered while it
+ * waits, a cancel seen between steps */
 final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm.Backend,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(),
     mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root)):
