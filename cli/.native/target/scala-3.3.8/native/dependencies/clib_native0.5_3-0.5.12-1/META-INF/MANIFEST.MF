@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Specification-Title: clib
+Specification-Version: 0.5.12
+Specification-Vendor: org.scala-native
+Implementation-Title: clib
+Implementation-Version: 0.5.12
+Implementation-Vendor: org.scala-native
+Implementation-Vendor-Id: org.scala-native
+Implementation-URL: http://www.scala-native.org
+

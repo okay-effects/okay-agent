@@ -1,0 +1,35 @@
+[debug] [zinc] IncrementalCompile -----------
+[debug] IncrementalCompile.incrementalCompile
+[debug] previous = Stamps for: 46 products, 4 sources, 5 libraries
+[debug] current source = Set(${BASE}/core/src/main/scala/okay/agent/Hypo.scala, ${BASE}/core/src/main/scala/okay/agent/Agent.scala, ${BASE}/core/src/main/scala/okay/agent/Effects.scala, ${BASE}/core/src/main/scala/okay/agent/Interceptors.scala)
+[debug] > initialChanges = InitialChanges(Changes(added = Set(), removed = Set(), changed = Set(${BASE}/core/src/main/scala/okay/agent/Interceptors.scala, ${BASE}/core/src/main/scala/okay/agent/Agent.scala, ${BASE}/core/src/main/scala/okay/agent/Hypo.scala), unmodified = ...),Set(),Set(),API Changes: Set())
+[debug] 
+[debug] Initial source changes:
+[debug] 	removed: Set()
+[debug] 	added: Set()
+[debug] 	modified: Set(${BASE}/core/src/main/scala/okay/agent/Interceptors.scala, ${BASE}/core/src/main/scala/okay/agent/Agent.scala, ${BASE}/core/src/main/scala/okay/agent/Hypo.scala)
+[debug] Invalidated products: Set()
+[debug] External API changes: API Changes: Set()
+[debug] Modified binary dependencies: Set()
+[debug] Initial directly invalidated classes: Set(okay.agent.Budget, okay.agent.Ctx, okay.agent.Outcome$.OutOfBudget, okay.agent.Outcome$.Done, okay.agent.Outcome, okay.agent.Hypo, okay.agent.Schema, okay.agent.Gate, okay.agent.Hypo$.Stand, okay.agent.Admit, okay.agent.Agent)
+[debug] Sources indirectly invalidated by:
+[debug] 	product: Set()
+[debug] 	binary dep: Set()
+[debug] 	external source: Set()
+[debug] All initially invalidated classes: Set(okay.agent.Budget, okay.agent.Ctx, okay.agent.Outcome$.OutOfBudget, okay.agent.Outcome$.Done, okay.agent.Outcome, okay.agent.Hypo, okay.agent.Schema, okay.agent.Gate, okay.agent.Hypo$.Stand, okay.agent.Admit, okay.agent.Agent)
+[debug] All initially invalidated sources:Set(${BASE}/core/src/main/scala/okay/agent/Interceptors.scala, ${BASE}/core/src/main/scala/okay/agent/Agent.scala, ${BASE}/core/src/main/scala/okay/agent/Hypo.scala)
+[debug] Initial set of included nodes: okay.agent.Budget, okay.agent.Ctx, okay.agent.Outcome$.OutOfBudget, okay.agent.Outcome$.Done, okay.agent.Outcome, okay.agent.Hypo, okay.agent.Schema, okay.agent.Gate, okay.agent.Hypo$.Stand, okay.agent.Admit, okay.agent.Agent
+[debug] Recompiling all sources: number of invalidated sources > 50.0 percent of all sources
+[debug] compilation cycle 1
+[info] compiling 4 Scala sources to /Users/sergiy/work/my/okay-agent/core/.jvm/target/scala-3.3.8/classes ...
+[debug] Returning already retrieved and compiled bridge: /Users/sergiy/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-sbt-bridge/3.3.8/scala3-sbt-bridge-3.3.8.jar.
+[debug] [zinc] Running cached compiler 443f22ca for Scala Compiler version 3.3.8
+[debug] [zinc] The Scala compiler is invoked with:
+[debug] 	-deprecation
+[debug] 	-feature
+[debug] 	-unchecked
+[debug] 	-Wunused:imports,privates,locals
+[debug] 	-classpath
+[debug] 	/Users/sergiy/work/my/okay-agent/core/.jvm/target/scala-3.3.8/classes:/Users/sergiy/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.8/scala3-library_3-3.3.8.jar:/Users/sergiy/Library/Caches/Coursier/v1/https/okay-effects.github.io/okay-llm/maven/io/github/okay-effects/okay-llm_3/0.1.0/okay-llm_3-0.1.0.jar:/Users/sergiy/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar:/Users/sergiy/Library/Caches/Coursier/v1/https/okay-effects.github.io/okay-scala/maven/io/github/okay-effects/okay-scala_3/0.1.1/okay-scala_3-0.1.1.jar:/Users/sergiy/Library/Caches/Coursier/v1/https/okay-effects.github.io/okay-simple/maven/io/github/okay-effects/okay-effects-json-value_3/0.1.1/okay-effects-json-value_3-0.1.1.jar
+[debug] Scala compilation took 2.182639292 s
+[info] done compiling

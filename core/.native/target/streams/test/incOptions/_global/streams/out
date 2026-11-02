@@ -1,0 +1,17 @@
+[debug] Created transactional ClassFileManager with tempDir = /Users/sergiy/work/my/okay-agent/core/.native/target/scala-3.3.8/test-classes.bak
+[debug] About to delete class files:
+[debug] 	LawsSuite$$anon$1.class
+[debug] 	LawsSuite.class
+[debug] 	LawsSuite$$anon$1.tasty
+[debug] 	LawsSuite.tasty
+[debug] We backup class files:
+[debug] 	LawsSuite$$anon$1.class
+[debug] 	LawsSuite.class
+[debug] 	LawsSuite$$anon$1.tasty
+[debug] 	LawsSuite.tasty
+[debug] Registering generated classes:
+[debug] 	LawsSuite$$anon$1.class
+[debug] 	LawsSuite.class
+[debug] 	LawsSuite$$anon$1.tasty
+[debug] 	LawsSuite.tasty
+[debug] Removing the temporary directory used for backing up class files: /Users/sergiy/work/my/okay-agent/core/.native/target/scala-3.3.8/test-classes.bak

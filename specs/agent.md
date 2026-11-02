@@ -46,7 +46,8 @@ Each guarantee is a handler transformer, on or off, tested alone:
 
 1. **admit** — a call to a tool not offered, or with arguments off its schema, is not performed: the model observes an
    error ("no such tool; there are: …"). A local Qwen does this within minutes.
-2. **budget** — tokens, steps, time: spent, an honest `OutOfBudget`, not a loop.
+2. **budget** — the model's turns and the tokens it makes: part of the program itself (`Ctx.budget`, checked each
+   turn), so the run ends honestly with `OutOfBudget`, not cut from outside.
 3. **compaction** — over the window: the oldest turns become a summary (by the same `Llm`), the prefix before it kept.
 4. **gate** — every `Tools` call through okay-guard's policy: allow, deny, or ask `Human` (under Acp, the client's).
 5. **journal** — every step in okay-guard's Ledger (a hash chain); a run replayed from it without a model.
@@ -85,6 +86,10 @@ States only through real transitions (the program run on a hypothesis's random a
    keep past think blocks).
 1. Core: effects, the loop, tool specs, admit, budget, trace, hypothesis; the admit and termination laws; `Llm.http`,
    local tools, the CLI. Measured against Claude Code on one task: prompt size, time to the first act, to the result.
+   — done 2026-11-02: okay-llm's `HttpBackend` (any OpenAI chat-completions server); core `Agent`, `Tools`, `Human`,
+   `Admit`, `Gate`, `Hypo`; laws admit (not vacuous: most hostile calls refused), termination, the prefix law, the
+   gate — 300 runs each, JVM and Native; the CLI's workspace tools. First real run (Qwen3.6-35B via okay-mlx):
+   rename → check → commit in 5 turns, the first prompt 887 tokens.
 2. Compaction and its law; the prefix kept across turns; journal and replay.
 3. ACP: okay-agent in okay-remote, with the policy and the phone.
 4. AG-UI: the shared events, okay-agent's server, okay-remote's endpoint.

@@ -1,0 +1,2 @@
+[debug] Subclass fingerprints: List((munit.Suite,false,scala.scalanative.testinterface.common.Serializer$FingerprintSerializer$$anon$5@3efb8531), (munit.Suite,true,scala.scalanative.testinterface.common.Serializer$FingerprintSerializer$$anon$5@1cd333d))
+[debug] Annotation fingerprints: List()
