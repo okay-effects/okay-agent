@@ -102,9 +102,9 @@ States only through real transitions (the program run on a hypothesis's random a
   assistant texts the client sent before. Each call shown (TOOL_CALL_START/ARGS/END before, TOOL_CALL_RESULT after),
   the model's words streamed as they come (a message: its start, each piece, its end). A call to be asked about
   (writes, commands, commits unless `--yes`) ends the run with an interrupt (`outcome: interrupt`, reason
-  `approval`, its `toolCallId`, payload `{approved, reason?}`); the program waits for it ALIVE on its thread — no replay — and the next run's `resume`
-  answers it, the program going on, its events on that run's stream (no answer in 30 minutes: the run cancelled). A
-  new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
+  `approval`, its `toolCallId`, payload `{approved, reason?}`); the program waits for it ALIVE on its thread — no
+  replay — and the next run's `resume` answers it, the program going on, its events on that run's stream (no answer
+  in 30 minutes: the run cancelled). A new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
   Order of interceptors (the innermost sees a call first): shown, then admitted, then gated.
 
 ## Where it lives
