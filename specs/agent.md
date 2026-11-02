@@ -90,7 +90,13 @@ States only through real transitions (the program run on a hypothesis's random a
    `Admit`, `Gate`, `Hypo`; laws admit (not vacuous: most hostile calls refused), termination, the prefix law, the
    gate — 300 runs each, JVM and Native; the CLI's workspace tools. First real run (Qwen3.6-35B via okay-mlx):
    rename → check → commit in 5 turns, the first prompt 887 tokens.
-2. Compaction and its law; the prefix kept across turns; journal and replay.
+2. Compaction and its law; the prefix kept across turns; journal and replay. — done 2026-11-02: `Compact.within`
+   (the model sees system + task + a stable summary + the latest turns; the latest turn kept always — the law caught
+   its loss, the agent began again; `keepLatest = false` is now the negative control), laws: invisible in acts (200
+   runs, compactions happened), the control caught, appends only between compactions; `Journal` (an effect) and
+   `Journal.recording`, `Replay.from` (strict, no model, no world), law: the same acts and end (200 runs). CLI:
+   `--window`, the journal in ~/.okay-agent/journals, `--replay`. On Qwen3.6: compacted mid-task, finished right, the
+   head still cached (885 of 1043).
 3. ACP: okay-agent in okay-remote, with the policy and the phone.
 4. AG-UI: the shared events, okay-agent's server, okay-remote's endpoint.
 5. The forecast as an input of the policy.

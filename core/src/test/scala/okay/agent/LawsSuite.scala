@@ -12,7 +12,7 @@ class LawsSuite extends munit.FunSuite:
   private def obj(props: (String, String)*) = Json.obj("type" -> Json.Str("object"),
     "properties" -> Json.Obj(props.toVector.map((n, t) => n -> Json.obj("type" -> Json.Str(t)))),
     "required" -> Json.Arr(props.toVector.map(p => Json.Str(p._1))))
-  private val tools = Vector(
+  val tools = Vector(
     ToolSpec("read", "Read a file", obj("path" -> "string"), ToolSpec.Kind.Read),
     ToolSpec("write", "Write a file", obj("path" -> "string", "content" -> "string"), ToolSpec.Kind.Write),
     ToolSpec("bash", "Run a command", obj("command" -> "string"), ToolSpec.Kind.Exec))
@@ -20,7 +20,7 @@ class LawsSuite extends munit.FunSuite:
 
   /** a hostile model: calls offered tools and others, its arguments right, missing, or of the wrong type; done at
    * random */
-  private def hostile(r: Random)(ask: Ask): String =
+  def hostile(r: Random)(ask: Ask): String =
     if r.nextDouble() < 0.15 then "Done."
     else
       val name = Vector("read", "write", "bash", "rm_rf", "commit", "Read")(r.nextInt(6))
@@ -28,7 +28,7 @@ class LawsSuite extends munit.FunSuite:
         """{}""", """{"path": 7}""", """{"command": ["ls"]}""", """"not an object"""")(r.nextInt(7))
       Hypo.call(name, args)
 
-  private def world(c: Call) = Obs(s"ok ${c.name}")
+  def world(c: Call) = Obs(s"ok ${c.name}")
 
   test("admit: no call reaches the world unless its tool was offered and its arguments fit — under a hostile model"):
     var made = 0
@@ -72,3 +72,23 @@ class LawsSuite extends munit.FunSuite:
     assertEquals(performed.map(c => (c.name, c.args("path").string)), Vector(("write", "a"), ("read", "a")))
     assertEquals(outcome, Outcome.Done("Done."))
     assert(seen.result().exists(_.contains("did not allow it: no, not that file")))
+
+/** REPLAY'S LAW: a run replayed from its journal — no model, no world — does the same acts and ends the same */
+class ReplaySuite extends munit.FunSuite:
+  type Row[X] = (Llm + Tools + Human + Journal)[X]
+  type Replayed[X] = (Llm + Tools + Journal)[X]
+  private val laws = LawsSuite()
+  private def acts(es: Vector[Json]) = es.filter(_("k").string == "act")
+
+  test("replayed from its journal: the same acts, the same end — under a hostile model, admitted"):
+    for seed <- 1 to 200 do
+      val r = scala.util.Random(seed)
+      val ctx = Agent.start("go", laws.tools, Budget(turns = 10))
+      val (entries, outcome) = run(Journal.collect(Human.by(_ => "y")(Tools.by(laws.world)(
+        Hypo.llm(laws.hostile(r))(Journal.recording[Row, Outcome](
+          Admit.within[Row, Outcome](laws.tools)(Agent.run[Row](ctx))))))))
+      val (again, outcomeAgain) = run(Journal.collect(Replay.from(entries)(Journal.recording[Replayed, Outcome](
+        Admit.within[Replayed, Outcome](laws.tools)(Agent.run[Replayed](ctx))))))
+      assertEquals(outcomeAgain, outcome, s"seed $seed")
+      assertEquals(acts(again), acts(entries), s"seed $seed")
+      assert(!acts(again).exists(_("obs").string.contains("diverged")), s"seed $seed: diverged")

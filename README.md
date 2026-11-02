@@ -25,4 +25,9 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
 - `cli` — the workspace's tools (`read`, `write`, `edit`, `bash`, `glob`, `grep`, `git_commit`; inside the project
   alone), the terminal as the person. `sbt cliNative/nativeLink` for a native binary.
 
-Next: compaction and its law, journal and replay; okay-agent over ACP in okay-remote; an AG-UI server.
+- `Compact.within(window)` — over the window, the model sees the system prompt, the task, a summary (made by the
+  same model, stable until the next compaction) and the latest turns; its law: invisible in what the agent does.
+- `Journal.recording` — each turn and act written (the CLI: ~/.okay-agent/journals/*.jsonl); `okay-agent --replay
+  <journal>` runs it again with no model and no world, strictly; its law: the same acts, the same end.
+
+Next: okay-agent over ACP in okay-remote; an AG-UI server; the forecast.
