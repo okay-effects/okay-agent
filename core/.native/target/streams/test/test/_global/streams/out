@@ -1,5 +1,0 @@
-[debug] Running TaskDef(okay.agent.LawsSuite, scala.scalanative.testinterface.common.Serializer$FingerprintSerializer$$anon$5@2e972ecb, false, [SuiteSelector])
-[debug] Summary for munit not available.
-[info] Passed: Total 4, Failed 0, Errors 0, Passed 4
-[debug] Passed tests:
-[debug] 	okay.agent.LawsSuite
