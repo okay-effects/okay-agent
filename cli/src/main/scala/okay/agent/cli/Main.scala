@@ -16,16 +16,16 @@ import scala.jdk.CollectionConverters.*
     case i => args.lift(i + 1)
   if args.headOption.contains("acp") then Main.acp(args.tail)
   if args.headOption.contains("serve") then Main.serve(args.tail)
-  val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay")
+  val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
   val replay = flag("--replay")
   if task.isEmpty && replay.isEmpty then
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
-                         |                  [--window N] [--dir D] [--yes] "<task>"
+                         |                  [--window N] [--dir D] [--yes] [--forecast N] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M]   (an ACP agent over stdio: Zed, okay-remote)
-                         |       okay-agent serve [--port 8091] [--dir D] [--yes] [--url U] [--model M]   (AG-UI)
+                         |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
@@ -34,9 +34,14 @@ import scala.jdk.CollectionConverters.*
     val offered = start.field("tools").map(_.list.map(Main.specOf)).getOrElse(Workspace.tools)
     val notes = start.field("notes").map(_.list.map(_.string)).getOrElse(Vector.empty)
     val ctx = Agent.start(start("task").string, offered, Budget(start("turns").int, start("tokens").int), notes)
-    type Replayed[X] = (Llm + Tools + Console)[X]
-    val outcome = run(Console.stdout(Replay.from(entries)(Main.shown[Replayed, Outcome](
-      Admit.within[Replayed, Outcome](offered)(Agent.run[Replayed](ctx))))))
+    type Replayed[X] = (Llm + Tools + Human + Console)[X]
+    // a run with forecasts: their turns in the journal too, read in the same places (nobody asked: the answers are
+    // the acts written)
+    val horizon = start.field("forecast").map(_.int).getOrElse(0)
+    val core = Main.shown[Replayed, Outcome](Admit.within[Replayed, Outcome](offered)(Agent.run[Replayed](ctx)))
+    val program = if horizon == 0 then core
+      else Forecast.gate[Replayed, Outcome](offered, horizon, Main.imagined, Some((_, _, _) => false))(core)
+    val outcome = run(Console.stdout(Human.by(_ => "n")(Replay.from(entries)(program))))
     println(s"\nreplayed: $outcome")
     sys.exit(0)
   }
@@ -45,6 +50,9 @@ import scala.jdk.CollectionConverters.*
   val window = Compact.Window(flag("--window").map(_.toInt).getOrElse(32768))
   val budget = Budget(flag("--turns").map(_.toInt).getOrElse(40), flag("--tokens").map(_.toInt).getOrElse(32000))
   val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
+  // --forecast N: before a call that is not a read, what comes after it forecast (N turns, the model the same, the
+  // calls imagined, reads real); asked only when it or what comes is risky
+  val horizon = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0)
   val workspace = Workspace(flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath)
   // the project's MCP servers, with no setting: its .mcp.json, and symdex where there is an index for it
   val (servers, served, routes) = Mcp.attach(workspace.root, Mcp.found(workspace.root),
@@ -74,10 +82,15 @@ import scala.jdk.CollectionConverters.*
   val out = java.io.PrintWriter(java.nio.file.Files.newBufferedWriter(journal))
   out.println(Json.obj("k" -> Json.Str("start"), "task" -> Json.Str(task), "model" -> Json.Str(model),
     "turns" -> Json.num(budget.turns), "tokens" -> Json.num(budget.tokens),
-    "tools" -> Json.Arr(tools.map(Main.specJson)), "notes" -> Json.Arr(notes.map(Json.Str(_)))).render)
-  val program = Journal.recording[Row, Outcome](Gate.asking[Row, Outcome](tools, ask)(
-    Admit.within[Row, Outcome](tools)(Main.shown[Row, Outcome](Compact.within[Row, Outcome](window)(
-      Agent.run[Row](Agent.start(task, tools, budget, notes)))))))
+    "tools" -> Json.Arr(tools.map(Main.specJson)), "notes" -> Json.Arr(notes.map(Json.Str(_))),
+    "forecast" -> Json.num(horizon)).render)
+  val inner = Admit.within[Row, Outcome](tools)(Main.shown[Row, Outcome](Compact.within[Row, Outcome](window)(
+    Agent.run[Row](Agent.start(task, tools, budget, notes)))))
+  def imagine(c: Call): Obs =
+    if tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then perform(c) else Main.imagined(c)
+  val program = Journal.recording[Row, Outcome](
+    if horizon > 0 then Forecast.gate[Row, Outcome](tools, horizon, imagine)(inner)
+    else Gate.asking[Row, Outcome](tools, ask)(inner))
   val outcome = try run(Journal.to(e => { out.println(e.render); out.flush() })(Console.stdout(
     Human.by(Main.terminal)(Tools.by(perform)(Llm.on(HttpBackend(url, model))(program))))))
     finally
@@ -89,6 +102,9 @@ import scala.jdk.CollectionConverters.*
     case Outcome.OutOfBudget(what) => System.err.println(f"out of budget ($what) after $seconds%.1f s"); sys.exit(1)
 
 object Main:
+  /** a call the forecast does not make: taken as done */
+  def imagined(c: Call): Obs = Obs(s"(forecast: ${c.name} not performed; take it as done)")
+
   /** okay-agent serve: the agent as an AG-UI server for one project — writes, commands and commits asked about
    * (an interrupt each) unless --yes */
   def serve(args: Seq[String]): Nothing =
@@ -100,7 +116,8 @@ object Main:
     val root = flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath
     val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
     val server = AgUiServer(root, () => HttpBackend(url, model), ask,
-      Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)))
+      Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)),
+      forecast = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0))
     System.err.println(s"okay-agent · $model · $root · AG-UI: POST /agent")
     okay.llm.Server.run(flag("--port").map(_.toInt).getOrElse(8091))(server.serve)
     sys.exit(0)

@@ -38,4 +38,24 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
   `OKAY_AGENT_NO_INSTALL=1` not at all; one on PATH used as it is. In an sbt project without it, the tool `symdex_setup` sets it up (its plugin, `sbt symdexIndex
   symdexMcp`); the next run has its tools. A grep for a symbol that finds nothing points to `references`.
 
-Next: okay-agent over ACP in okay-remote; an AG-UI server; the forecast.
+- `--forecast N` — before a call that is not a read, what comes after it forecast: the same program run on from the
+  same conversation (the model the real one, its cache shared), N turns at most, the calls imagined done (reads real).
+  Asked only when the call or anything ahead is risky (a commit, a push, `rm -rf`, a publish, `curl | sh` …), the
+  forecast in the question:
+
+  ```
+  write — edit {"path":"hello.py", …}
+    forecast: then bash python3 -c "…", git_commit Add answer(); then done (3 turns); ⚠ git_commit … (not to be undone)
+    allow? [y/N]
+  ```
+
+  Laws: it touches nothing (the world's acts the same with it as without), its requests extend the conversation, a run
+  with forecasts replays from its journal. It costs model time: on Qwen3.6-35B, ~30 s a forecast of 2–3 turns.
+
+## Surfaces
+
+- `okay-agent acp` — an ACP agent over stdio (Zed, okay-remote: "okay-agent · <model>" on its New screen, the phone
+  approving): its files and commands through the client, so the client's gate weighs each.
+- `okay-agent serve [--port 8091] [--forecast N]` — an AG-UI server (`POST /agent`), any AG-UI client a front end: a
+  call to be asked about ends the run with an interrupt, the program waits for it alive, the next run's `resume`
+  answers it. okay-remote serves every session the same way (`POST /agui`).

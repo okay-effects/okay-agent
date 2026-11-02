@@ -44,16 +44,20 @@ object Agent:
   def run[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): Outcome ! R = runOn[R](ctx).map(_._1)
 
   /** the program, and the conversation it ended with: a session's next prompt goes on from it ([[next]]) */
-  def runOn[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): (Outcome, Ctx) ! R =
+  def runOn[R[_]: Has[Llm] : Has[Tools]](ctx: Ctx): (Outcome, Ctx) ! R = runWith[R](ctx)(Tools.perform[R])
+
+  /** the program with its calls answered by `perform` — the world's tools (`runOn`), or a hypothesis's (the
+   * forecast: the same program, from the same conversation, nothing touched) */
+  def runWith[R[_]: Has[Llm]](ctx: Ctx)(perform: Call => Obs ! R): (Outcome, Ctx) ! R =
     loop[Ctx, (Outcome, Ctx), R](ctx) { c =>
       if c.turns >= c.budget.turns then pure(Right((Outcome.OutOfBudget(s"${c.turns} turns"), c)))
       else if c.tokens >= c.budget.tokens then pure(Right((Outcome.OutOfBudget(s"${c.tokens} tokens"), c)))
       else Llm.complete[R](c.ask).flatMap { f =>
-        val calls = f.reply.toolCalls.zipWithIndex.map((t, k) => Call(s"call_${c.turns}_$k", t.name, t.arguments))
+        val calls = callsOf(f, c.turns)
         val spent = c.copy(messages = c.messages :+ turn(f, calls), turns = c.turns + 1,
           tokens = c.tokens + f.timing.tokens)
         if calls.isEmpty then pure(Right((Outcome.Done(f.reply.content), spent)))
-        else each(calls)(call => Tools.perform[R](call).map(o => observation(call, o)))
+        else each(calls)(call => perform(call).map(o => observation(call, o)))
           .map(obs => Left(spent.copy(messages = spent.messages ++ obs)))
       }
     }
@@ -67,13 +71,22 @@ object Agent:
   private def each[A, B, R[_]](as: Vector[A])(f: A => B ! R): Vector[B] ! R =
     as.foldLeft(pure[Vector[B], R](Vector.empty))((acc, a) => acc.flatMap(bs => f(a).map(bs :+ _)))
 
+  /** the calls of a turn, named as the conversation names them: call_<turn>_<k> */
+  def callsOf(f: Finished, turn: Int): Vector[Call] =
+    f.reply.toolCalls.zipWithIndex.map((t, k) => Call(s"call_${turn}_$k", t.name, t.arguments))
+
+  /** the calls a conversation's assistant turns made, in order */
+  def callsIn(messages: Vector[Json]): Vector[Call] =
+    messages.filter(_("role") == s("assistant")).flatMap(_.field("tool_calls").map(_.list).getOrElse(Vector.empty))
+      .map(c => Call(c("id").string, c("function")("name").string, c("function")("arguments")))
+
   /** the model's turn as the conversation keeps it: its text, its calls (arguments as JSON) */
-  private def turn(f: Finished, calls: Vector[Call]): Json =
+  def turn(f: Finished, calls: Vector[Call]): Json =
     Json.Obj(Vector("role" -> s("assistant"), "content" -> s(f.reply.content)) ++
       (if calls.isEmpty then Vector.empty else Vector("tool_calls" -> Json.Arr(calls.map(c => Json.obj(
         "id" -> s(c.id), "type" -> s("function"),
         "function" -> Json.obj("name" -> s(c.name), "arguments" -> c.args)))))))
 
-  private def observation(call: Call, o: Obs): Json =
+  def observation(call: Call, o: Obs): Json =
     Json.obj("role" -> s("tool"), "tool_call_id" -> s(call.id),
       "content" -> s(if o.error then s"error: ${o.text}" else o.text))

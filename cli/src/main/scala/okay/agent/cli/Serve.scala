@@ -15,7 +15,7 @@ import scala.collection.mutable
  * run with an interrupt (an approval); the program waits for it, alive — no replay — and the next run's `resume`
  * answers it, the program going on, its events on the new run's stream. A client gone mid-run cancels it */
 final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind => Boolean,
-    window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(),
+    window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(), forecast: Int = 0,
     mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), waitFor: Long = 30 * 60 * 1000L):
   lazy val project: Project = Project(root, mcp)
 
@@ -110,8 +110,13 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
     type Row[X] = (Llm + Tools + Human + Console)[X]
     val events = AgUiServer.events[Row, (Outcome, Ctx)](call => lastCall = Some(call), message) _
     // the innermost interceptor sees a call first: shown, then admitted, then gated
-    val prog = Gate.asking[Row, (Outcome, Ctx)](project.tools, ask)(Admit.within[Row, (Outcome, Ctx)](project.tools)(
-      events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx)))))
+    val inner = Admit.within[Row, (Outcome, Ctx)](project.tools)(
+      events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx))))
+    // with a forecast: asked only when the call or what comes after it is risky — the forecast in the interrupt
+    def imagine(c: Call): Obs = if project.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
+      project.perform(c) else Main.imagined(c)
+    val prog = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](project.tools, forecast, imagine)(inner)
+      else Gate.asking[Row, (Outcome, Ctx)](project.tools, ask)(inner)
     def check(): Unit = if t.sink.gone then throw AgUiServer.Cancelled
     try
       val (outcome, end) = okay.scala3.run(AgUiServer.lines(e => { check(); emit(Json.fromText(e)) })(Human.by(person)(

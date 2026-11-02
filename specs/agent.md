@@ -52,8 +52,15 @@ Each guarantee is a handler transformer, on or off, tested alone:
 4. **gate** — every `Tools` call through okay-guard's policy: allow, deny, or ask `Human` (under Acp, the client's).
 5. **journal** — every step in okay-guard's Ledger (a hash chain); a run replayed from it without a model.
 6. **events** — the trace as AG-UI events for any client.
-7. **forecast** (last) — before a risky call, a copy of the continuation run under a hypothesis: steps left,
-   irreversible acts → a risk the policy may use. As good as the hypothesis (theirs got the shape, not the content).
+7. **forecast** — before a call that is not a read, the continuation run under a hypothesis: no captured k and no
+   replay — the agent's state is data (`Ctx`), so the continuation IS `Agent.runWith` from the conversation up to the
+   call (the turn's earlier calls with their real observations, this call and the turn's rest imagined done). The
+   model the real one (its requests extend the conversation: the cache shared), the calls a hypothesis's (reads may
+   be real, the rest imagined), `horizon` turns at most. Its acts, the risky ones (kind Irreversible; a command that
+   pushes, throws work away, removes, publishes, runs what it downloads, changes the machine or a deployment) → the
+   policy's input: `Forecast.gate` asks a person only when the call or anything ahead is risky, the forecast in the
+   question (the CLI's terminal, the AG-UI interrupt). As good as the hypothesis: it gets the shape, not the content.
+   Its requests go outward of it (not shown, not compacted, journalled — a replay reads them in place).
 
 ## Laws: each guarantee a property test
 
@@ -129,7 +136,13 @@ States only through real transitions (the program run on a hypothesis's random a
    observation; a thread's runs one conversation); okay-remote's `POST /agui` (every session, whatever its agent).
    Checked with AG-UI's own client (@ag-ui/client, which verifies the stream) on Qwen3.6-35B: two approvals by
    resume, the file, the answer 42 — against `okay-agent serve`, and against okay-remote with okay-agent inside.
-5. The forecast as an input of the policy.
+5. The forecast as an input of the policy — done 2026-11-02: `Agent.runWith` (the program with its calls answered by
+   a function), `Forecast.of`, `Forecast.gate`, `Forecast.danger`; laws (ForecastSuite, JVM and Native): it touches
+   nothing (the world's acts and end the same with it as without, 200 runs of a hostile model answering by the request),
+   its requests extend the conversation, a run with forecasts replays from its journal; CLI and serve `--forecast N`.
+   On Qwen3.6-35B: "add answer(), check it, commit" — at the edit the forecast saw the check and the commit (exactly
+   what came), every step asked with it; "add answer2(), check it, do not commit" — nothing asked. Cost: the forecasts
+   ~96 s of 150 s (the run's own turns ~54 s) — a forecast is 1–3 model turns.
 
 Tools of the first version: `read`, `write`, `edit` (replace a fragment), `bash`, `glob`, `grep`, `git_commit`. The
 system prompt short, in English, the tool-call rules explicit for Qwen.
