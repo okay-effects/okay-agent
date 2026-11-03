@@ -69,6 +69,38 @@ session.
 - Law: a fork's continuation equals the unforked run given the same handler answers (property test with `Hypo`).
 - Measure: tasks solved, wall time, against retries.
 
+### What is already there, and what the state is (findings, 2026-11-03)
+
+- mlx-scala already has the continuation as a value: `State.snapshot()` / `Model.restore(snapshot)` (restore twice:
+  two independent branches — multi-shot without replay), `checkpoint()` / `rewind(c, keep)` (used by `Generate` to
+  undo wrong guesses — multi-shot in production), `PrefixCache` (LRU, 4 GiB), `PrefixStore` (on disk, the law "a
+  prefix from disk, the same answer"). Stage 3 is mostly **exposing** this, not building it.
+- Qwen3.6 / 3.5 is hybrid: of 40 layers, 10 full attention (a KV cache growing with length: 10 × (K+V) × 2 heads ×
+  256 × 2 bytes = **20 KiB a token**) and 30 Gated DeltaNet (a recurrent state of fixed size: 32 × 128 × 128 ×
+  float32 = 2 MiB a layer, **60 MiB in all**, plus ~1.4 MiB of convolution windows). A snapshot: ~82 MiB at 1k
+  tokens, ~260 MiB at 10k, ~2.0 GiB at 100k, ~5.1 GiB at 262k.
+- A recurrent state cannot be cut back to a shorter prefix: the points one can return to must be **declared in
+  advance** (snapshots at marks, as `PrefixCache` does at `Chat.marks`). A decode module that may roll back (a
+  secret → `[hidden]`) snapshots **before** the suspicious place; it cannot roll back after the fact.
+- A full continuation is more than the model's state: position, the sampler's state (seed, the penalties' history),
+  the decode modules' states, the handle table. Without the seed, two branches from one snapshot sample differently
+  (fine for "what if", wrong for exact resumption).
+- Copy-on-write: branches share the full-attention KV of their common prefix (pages, as paged attention); the 60 MiB
+  of recurrent state is copied whole. A fork at 10k tokens then costs ~60 MiB, not ~260.
+- The law, as a property test: `restore(snapshot(s))` then feeding `x` ≡ `s` then feeding `x` (logits bit-equal).
+- Measure first (M4 Max, Qwen3.6-35B): prefill of 10k and 30k tokens; save/load of a snapshot that size through
+  `PrefixStore`; restore ×3 and a short continuation with the law checked. These decide how much "resume at once"
+  and "forks" are worth.
+- Gateway API sketch: `POST /v1/sessions/{id}/snapshot` → id; `/fork?from=` → a new session; `/save`, `/load`;
+  `/rewind?to=`.
+- Practical value (why): resume yesterday's long session at once (load ~0.5 GiB instead of re-reading 30k tokens);
+  "go back to before X" without the wrong turn left in the context; branches of a conversation kept side by side;
+  best-of-n with tests for a weaker local model (no re-prefill per attempt); coherent text after a decode module's
+  rollback; a risky step tried in a branch and chosen from the phone (okay-remote); debugging from the step before a
+  failure instead of re-running everything.
+- Not in the cloud: a Durable Object cannot hold a 35B model's state; there the continuation is the transcript and
+  resuming is re-sending (replay softened by prompt caching). Remote APIs have no state at all.
+
 ## Stage 4 — the module manifest in okay-llm, policies in okay-guard
 
 - okay-llm: generation is an effect; modules are interceptors/handlers on it; the manifest (ports, effects, tests,
