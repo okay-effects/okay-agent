@@ -94,8 +94,8 @@ object Forecast:
               else Human.ask[R](s"${kind.toString.toLowerCase} — ${call.name} ${call.args.render}" +
                   danger(tools)(call).fold("")(why => s" ⚠ $why") + s"\n  ${fc.summary}\n" +
                   "  allow? [y/N] ").flatMap(a => if a.trim.toLowerCase.startsWith("y") then proceed.map(done)
-                  else pure(done(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}", refused = true,
-                    error = true))))
+                  else pure(done(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}",
+                    error = true, refused = true))))
             }
           case _ => proceed.map(done))
 
