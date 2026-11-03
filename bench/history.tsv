@@ -29,3 +29,15 @@ date	okay-agent	agent	task	solved	seconds	turns	end
 2026-11-03	0441276	okay-agent	10	yes	122	6	exit 0
 2026-11-03	0441276	opencode	10	yes	131	-	exit 0
 2026-11-03	0441276	claude	10	yes	207	8	exit 0
+2026-11-03	5da4947	okay-agent	1	yes	240	9	exit 0
+2026-11-03	5da4947	okay-agent	2	yes	105	7	exit 0
+2026-11-03	5da4947	okay-agent	3	yes	95	7	exit 0
+2026-11-03	5da4947	okay-agent	4	yes	18	2	exit 0
+2026-11-03	5da4947	okay-agent	5	yes	114	6	exit 0
+2026-11-03	5da4947	okay-agent	6	yes	196	16	exit 0
+2026-11-03	5da4947	okay-agent	7	yes	70	4	exit 0
+2026-11-03	5da4947	okay-agent	8	yes	104	6	exit 0
+2026-11-03	5da4947	okay-agent	9	yes	123	12	exit 0
+2026-11-03	5da4947	okay-agent	10	yes	123	6	exit 0
+2026-11-03	5da4947	opencode	9	yes	511	-	exit 0
+2026-11-03	5da4947	claude	9	yes	129	9	exit 0
