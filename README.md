@@ -51,6 +51,8 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
 
   Laws: it touches nothing (the world's acts the same with it as without), its requests extend the conversation, a run
   with forecasts replays from its journal. It costs model time: on Qwen3.6-35B, ~30 s a forecast of 2–3 turns.
+  `--futures N`: the forecast a tree of N nodes (okay-scala's `Cofree`), branching as commands pass or fail — "⚠ in 2
+  of 3 futures: git_commit …"; wider, so shallower for the same time: for irreversible steps.
 
 - `--stuck N` (3 by default; 0 off) — a coeffect: each call decided by the history behind it (okay-scala's
   `Coeffects.aroundHistory`). After N calls failed in a row, a call that is not a read is asked first:

@@ -16,6 +16,7 @@ import scala.collection.mutable
  * answers it, the program going on, its events on the new run's stream. A client gone mid-run cancels it */
 final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind => Boolean,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(), forecast: Int = 0, stuck: Int = 3,
+    futures: Int = 0,
     mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), waitFor: Long = 30 * 60 * 1000L,
     timeoutSeconds: Int = 300):
   lazy val project: Project = Project(root, mcp, timeoutSeconds)
@@ -118,7 +119,8 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
     // with a forecast: asked only when the call or what comes after it is risky — the forecast in the interrupt
     def imagine(c: Call): Obs = if project.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
       project.perform(c) else Main.imagined(c)
-    val prog = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](project.tools, forecast, imagine)(inner)
+    val prog = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](project.tools, forecast, imagine,
+      futures = futures)(inner)
       else Gate.asking[Row, (Outcome, Ctx)](project.tools, ask)(inner)
     def check(): Unit = if t.sink.gone then throw AgUiServer.Cancelled
     try

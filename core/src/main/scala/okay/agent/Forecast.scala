@@ -23,6 +23,8 @@ object Forecast:
    * or runs what it downloads (RE2: Scala Native's too) */
   private val commands: Vector[(scala.util.matching.Regex, String)] = Vector(
     "\\bgit\\s+push\\b".r -> "pushes",
+    // a commit made by a command, as the git_commit tool's: seen on Qwen3.6, `git commit -m …` by bash, unasked
+    "\\bgit\\s+(commit|merge|tag|cherry-pick)\\b".r -> "commits",
     "\\bgit\\s+(reset\\s+--hard|clean\\s+-[a-z]*f|checkout\\s+--\\s|restore\\b|rebase\\b|filter-branch\\b)".r ->
       "throws work away",
     "\\brm\\s+(-[a-zA-Z]*[rf]|--recursive|--force)".r -> "removes files",
@@ -63,7 +65,7 @@ object Forecast:
    * forecast is in the question; not asked, it goes on. The forecast's requests go to the model outward of this
    * interceptor (not shown, not compacted; journalled where a journal is outward) */
   def gate[R[_], A](tools: Vector[ToolSpec], horizon: Int, imagine: Call => Obs,
-      decide: Option[(Call, ToolSpec.Kind, Forecast) => Boolean] = None)(p: A ! R)
+      decide: Option[(Call, ToolSpec.Kind, Forecast) => Boolean] = None, futures: Int = 0)(p: A ! R)
       (using In[Llm, R], In[Tools, R], In[Human, R]): A ! R =
     val ask = decide.getOrElse(asks(tools, Vector.empty))
     var lastAsk: Option[Ask] = None
@@ -89,10 +91,17 @@ object Forecast:
             val rest = calls.dropWhile(_.id != call.id).drop(1)
             val ctx = Ctx(a.messages :+ Agent.turn(f, calls), tools, Budget(), maxTokens = a.maxTokens)
             val sofar = ctx.copy(messages = ctx.messages ++ answered.map((c, o) => Agent.observation(c, o)))
-            Forecast.of[R](sofar, call, rest, tools, horizon, imagine).flatMap { fc =>
+            // a tree of futures (`futures` nodes), or one path: what comes, risky or not, and its line for a person
+            val seen: (Forecast, String) ! R =
+              if futures > 1 then Futures.of[R](sofar, call, rest, tools, horizon, futures, imagine).map { t =>
+                val acts = Futures.ahead(t)
+                (Forecast(acts, Futures.risks(tools)(t).toVector, t.size - 1, None), Futures.summary(tools)(t))
+              }
+              else Forecast.of[R](sofar, call, rest, tools, horizon, imagine).map(fc => (fc, fc.summary))
+            seen.flatMap { (fc, line) =>
               if !ask(call, kind, fc) then proceed.map(done)
               else Human.ask[R](s"${kind.toString.toLowerCase} — ${call.name} ${call.args.render}" +
-                  danger(tools)(call).fold("")(why => s" ⚠ $why") + s"\n  ${fc.summary}\n" +
+                  danger(tools)(call).fold("")(why => s" ⚠ $why") + s"\n  $line\n" +
                   "  allow? [y/N] ").flatMap(a => if a.trim.toLowerCase.startsWith("y") then proceed.map(done)
                   else pure(done(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}",
                     error = true, refused = true))))

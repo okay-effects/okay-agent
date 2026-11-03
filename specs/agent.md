@@ -63,7 +63,16 @@ Each guarantee is a handler transformer, on or off, tested alone:
    pushes, throws work away, removes, publishes, runs what it downloads, changes the machine or a deployment) → the
    policy's input: `Forecast.gate` asks a person only when the call or anything ahead is risky, the forecast in the
    question (the CLI's terminal, the AG-UI interrupt). As good as the hypothesis: it gets the shape, not the content.
-   Its requests go outward of it (not shown, not compacted, journalled — a replay reads them in place).
+   Its requests go outward of it (not shown, not compacted, not journalled: the journal is the innermost).
+   **A tree** (`--futures N`, 2026-11-03; `Futures`): the future branches where the world may answer either way —
+   the first command (or commit) of each turn passing or failing — each child one model turn further; okay-scala's
+   `Cofree`, made breadth first within N nodes (a model's turn each); the risk below each point `extend`; the line for
+   a person: "futures: 3 seen; ⚠ in 2 of 3: git_commit …". Laws (FuturesSuite): where nothing branches, one path —
+   the single forecast's acts; a branch per command as it passes or fails; never past its budget; touches nothing.
+   On Qwen3.6: deeper than it is wide costs — 5 nodes branching at every command saw 2 turns ahead where one path saw
+   3; the run took 326 s against 150. For irreversible steps, not every write.
+   A commit by a command (`git commit`, `merge`, `tag`, `cherry-pick`) is risky as the git_commit tool is: seen on
+   Qwen3.6, a `git commit -m …` by bash went through unasked.
 
 8. **stuck** — a coeffect: a call decided by the history behind it (okay-scala's `Coeffects.aroundHistory`, its
    comonad `History`). After `after` calls failed in a row (3 by default; a failure: an observation that is an error

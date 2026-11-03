@@ -18,7 +18,7 @@ import scala.collection.mutable
 final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm.Backend,
     window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(),
     mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), timeoutSeconds: Int = 300, forecast: Int = 0,
-    stuck: Int = 3,
+    stuck: Int = 3, futures: Int = 0,
     journal: Path => Option[Path] = root => Some(Main.journalFile(root))):
   private var nextId = 0
   /** the command the client runs now (its session, its terminal): killed on a cancel, or when it runs too long */
@@ -126,7 +126,8 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
         Journal.recording[Row, (Outcome, Ctx)](Agent.runOn[Row](ctx))))))
     def imagine(c: Call): Obs = if s.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
       perform(s)(c) else Main.imagined(c)
-    val program = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](s.tools, forecast, imagine)(inner) else inner
+    val program = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](s.tools, forecast, imagine,
+      futures = futures)(inner) else inner
     val file = journal(s.ws.root)
     val out = file.map(f => java.io.PrintWriter(java.nio.file.Files.newBufferedWriter(f)))
     out.foreach(_.println(Json.obj("k" -> Json.Str("start"), "task" -> Json.Str(text),
