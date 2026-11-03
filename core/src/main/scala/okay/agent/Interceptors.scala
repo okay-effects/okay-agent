@@ -66,5 +66,6 @@ object Gate:
         case Some(t) if ask(t.kind) =>
           Human.ask[R](s"${t.kind.toString.toLowerCase} — ${call.name} ${call.args.render}  allow? [y/N] ")
             .flatMap(a => if a.trim.toLowerCase.startsWith("y") then proceed
-              else pure(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}", error = true)))
+              else pure(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}", error = true,
+                refused = true)))
         case _ => proceed)

@@ -35,7 +35,7 @@ object Journal:
       case Tools.Perform(c) => proceed.flatMap(o => write[R](act(c, o)).as(o)))
 
   def act(c: Call, o: Obs): Json = Json.obj("k" -> s("act"), "id" -> s(c.id), "name" -> s(c.name), "args" -> c.args,
-    "obs" -> s(o.text), "error" -> Json.Bool(o.error))
+    "obs" -> s(o.text), "error" -> Json.Bool(o.error), "refused" -> Json.Bool(o.refused))
 
   def turn(r: Reply): Json = Json.obj("k" -> s("turn"), "reasoning" -> s(r.reasoning), "content" -> s(r.content),
     "calls" -> Json.Arr(r.toolCalls.map(c => Json.obj("name" -> s(c.name), "args" -> c.arguments))))
@@ -54,7 +54,7 @@ object Replay:
         if e("name").string != c.name || e("args") != c.args then
           Obs(s"the replay diverged: ${c.name} ${c.args.render}, written ${e("name").string} ${e("args").render}",
             error = true)
-        else Obs(e("obs").string, e("error") == Json.Bool(true))
+        else Obs(e("obs").string, e("error") == Json.Bool(true), e("refused") == Json.Bool(true))
     }(Llm.on[R, Rest1, A](Recorded(turns))(p))
 
   private final class Recorded(turns: Iterator[Json]) extends Llm.Backend:

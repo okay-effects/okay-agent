@@ -24,8 +24,9 @@ object ToolSpec:
 /** A CALL the model made: its id (the conversation's), the tool's name, its arguments */
 final case class Call(id: String, name: String, args: Json)
 
-/** WHAT A CALL GAVE: its text, and whether it failed */
-final case class Obs(text: String, error: Boolean = false)
+/** WHAT A CALL GAVE: its text, whether it failed, and whether a person refused it (not the agent's failure: what
+ * `Stuck` does not count) */
+final case class Obs(text: String, error: Boolean = false, refused: Boolean = false)
 
 /** THE TOOLS, as the program sees them: a call performed, an observation back. Which tools do what is the handler's:
  * a workspace's (the CLI), a client's (ACP), invented ones (a hypothesis) */

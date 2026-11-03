@@ -17,13 +17,13 @@ import scala.jdk.CollectionConverters.*
   if args.headOption.contains("acp") then Main.acp(args.tail)
   if args.headOption.contains("serve") then Main.serve(args.tail)
   val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast",
-    "--timeout")
+    "--timeout", "--stuck")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
   val replay = flag("--replay")
   if task.isEmpty && replay.isEmpty then
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
-                         |                  [--window N] [--dir D] [--yes] [--forecast N] [--timeout S] "<task>"
+                         |                  [--window N] [--dir D] [--yes] [--forecast N] [--stuck N] [--timeout S] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
@@ -43,6 +43,8 @@ import scala.jdk.CollectionConverters.*
   // --forecast N: before a call that is not a read, what comes after it forecast (N turns, the model the same, the
   // calls imagined, reads real); asked only when it or what comes is risky
   val horizon = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0)
+  // --stuck N: after N calls failed in a row, a call that is not a read asked first (0: never)
+  val stuck = flag("--stuck").map(_.toInt).getOrElse(3)
   // a command's time at most (a build's test run takes minutes)
   val timeout = flag("--timeout").map(_.toInt).getOrElse(300)
   val workspace = Workspace(flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath, timeout)
@@ -76,13 +78,16 @@ import scala.jdk.CollectionConverters.*
     "turns" -> Json.num(budget.turns), "tokens" -> Json.num(budget.tokens),
     "tools" -> Json.Arr(tools.map(Main.specJson)), "notes" -> Json.Arr(notes.map(Json.Str(_))),
     "forecast" -> Json.num(horizon)).render)
-  val inner = Admit.within[Row, Outcome](tools)(Main.shown[Row, Outcome](Compact.within[Row, Outcome](window)(
-    Agent.run[Row](Agent.start(task, tools, budget, notes)))))
+  // the innermost sees a call first: the journal (each call's final answer, a refusal included — so a replay needs
+  // no interceptor), shown, stuck, admitted, then gated
+  val inner = Admit.within[Row, Outcome](tools)(Stuck.asking[Row, Outcome](tools, stuck)(Main.shown[Row, Outcome](
+    Compact.within[Row, Outcome](window)(Journal.recording[Row, Outcome](
+      Agent.run[Row](Agent.start(task, tools, budget, notes)))))))
   def imagine(c: Call): Obs =
     if tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then perform(c) else Main.imagined(c)
-  val program = Journal.recording[Row, Outcome](
+  val program =
     if horizon > 0 then Forecast.gate[Row, Outcome](tools, horizon, imagine)(inner)
-    else Gate.asking[Row, Outcome](tools, ask)(inner))
+    else Gate.asking[Row, Outcome](tools, ask)(inner)
   val outcome = try run(Journal.to(e => { out.println(e.render); out.flush() })(Console.stdout(
     Human.by(Main.terminal)(Tools.by(perform)(Llm.on(HttpBackend(url, model))(program))))))
     finally
@@ -96,7 +101,8 @@ import scala.jdk.CollectionConverters.*
 object Main:
   type Replayed[X] = (Llm + Tools + Human + Console)[X]
   /** a run again from its journal, no model, no world: from its start's conversation (a session's later prompt) or
-   * its task; its forecasts' turns read in place; the lines shown given to `line` */
+   * its task — the program alone, each call answered as written (a refusal of the gate's, stuck's, admit's
+   * included: the journal is the innermost); the lines shown given to `line` */
   def replayed(entries: Vector[Json], line: String => Unit): Outcome =
     val start = entries.find(_("k").string == "start").getOrElse(sys.error("no start entry"))
     val offered = start.field("tools").map(_.list.map(Main.specOf)).getOrElse(Workspace.tools)
@@ -104,13 +110,8 @@ object Main:
     val budget = Budget(start("turns").int, start("tokens").int)
     val ctx = start.field("messages").map(ms => Ctx(ms.list, offered, budget))
       .getOrElse(Agent.start(start("task").string, offered, budget, notes))
-    // a run with forecasts: their turns in the journal too, read in the same places (nobody asked: the answers are
-    // the acts written)
-    val horizon = start.field("forecast").map(_.int).getOrElse(0)
-    val core = Main.shown[Replayed, Outcome](Admit.within[Replayed, Outcome](offered)(Agent.run[Replayed](ctx)))
-    val program = if horizon == 0 then core
-      else Forecast.gate[Replayed, Outcome](offered, horizon, Main.imagined, Some((_, _, _) => false))(core)
-    run(AgUiServer.lines(line)(Human.by(_ => "n")(Replay.from(entries)(program))))
+    run(AgUiServer.lines(line)(Human.by(_ => "n")(Replay.from(entries)(
+      Main.shown[Replayed, Outcome](Agent.run[Replayed](ctx))))))
 
   /** a call the forecast does not make: taken as done */
   def imagined(c: Call): Obs = Obs(s"(forecast: ${c.name} not performed; take it as done)")
@@ -126,7 +127,7 @@ object Main:
     val root = flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath
     val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
     val server = AgUiServer(root, () => HttpBackend(url, model), ask,
-      Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)),
+      Compact.Window(flag("--window").map(_.toInt).getOrElse(32768)), stuck = flag("--stuck").map(_.toInt).getOrElse(3),
       forecast = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0),
       timeoutSeconds = flag("--timeout").map(_.toInt).getOrElse(300))
     System.err.println(s"okay-agent · $model · $root · AG-UI: POST /agent")
@@ -147,7 +148,8 @@ object Main:
     val in = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     AcpAgent(in, line => { stdout.print(line + "\n"); stdout.flush() }, _ => HttpBackend(url, model), window,
       timeoutSeconds = flag("--timeout").map(_.toInt).getOrElse(300),
-      forecast = flag("--forecast").map(_.toInt).getOrElse(0)).serve()
+      forecast = flag("--forecast").map(_.toInt).getOrElse(0), stuck = flag("--stuck").map(_.toInt).getOrElse(3))
+      .serve()
     sys.exit(0)
 
   /** a grep for a symbol that found nothing, with symdex here: the model told where the uses are found — text misses

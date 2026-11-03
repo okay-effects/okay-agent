@@ -52,6 +52,18 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
   Laws: it touches nothing (the world's acts the same with it as without), its requests extend the conversation, a run
   with forecasts replays from its journal. It costs model time: on Qwen3.6-35B, ~30 s a forecast of 2–3 turns.
 
+- `--stuck N` (3 by default; 0 off) — a coeffect: each call decided by the history behind it (okay-scala's
+  `Coeffects.aroundHistory`). After N calls failed in a row, a call that is not a read is asked first:
+
+  ```
+  ✗ bash {"command":"./build.sh"}  /bin/sh: ./build.sh: No such file or directory (exit 127)   ×3
+  3 calls failed in a row — go on with bash {"command":"./build.sh"}? [y/N]
+  ```
+
+  A person's refusals (the gate's, the forecast's) are not the agent's failures. Laws: no call but a read reaches the
+  world stuck unless the person said yes to it (300 runs of a hostile model in a failing world); nobody asked when
+  nothing fails; a run replays from its journal — kept innermost, so every refusal is in it.
+
 ## Surfaces
 
 - `okay-agent acp` — an ACP agent over stdio (Zed, okay-remote: "okay-agent · <model>" on its New screen, the phone

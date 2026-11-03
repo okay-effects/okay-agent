@@ -15,7 +15,7 @@ import scala.collection.mutable
  * run with an interrupt (an approval); the program waits for it, alive — no replay — and the next run's `resume`
  * answers it, the program going on, its events on the new run's stream. A client gone mid-run cancels it */
 final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind => Boolean,
-    window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(), forecast: Int = 0,
+    window: Compact.Window = Compact.Window(32768), budget: Budget = Budget(), forecast: Int = 0, stuck: Int = 3,
     mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root), waitFor: Long = 30 * 60 * 1000L,
     timeoutSeconds: Int = 300):
   lazy val project: Project = Project(root, mcp, timeoutSeconds)
@@ -112,9 +112,9 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
     var lastStreamed = false
     val events = AgUiServer.events[Row, (Outcome, Ctx)](call => lastCall = Some(call), message,
       any => lastStreamed = any) _
-    // the innermost interceptor sees a call first: shown, then admitted, then gated
-    val inner = Admit.within[Row, (Outcome, Ctx)](project.tools)(
-      events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx))))
+    // the innermost interceptor sees a call first: shown, stuck, then admitted, then gated
+    val inner = Admit.within[Row, (Outcome, Ctx)](project.tools)(Stuck.asking[Row, (Outcome, Ctx)](project.tools,
+      stuck)(events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx)))))
     // with a forecast: asked only when the call or what comes after it is risky — the forecast in the interrupt
     def imagine(c: Call): Obs = if project.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
       project.perform(c) else Main.imagined(c)

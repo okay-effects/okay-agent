@@ -50,7 +50,10 @@ Each guarantee is a handler transformer, on or off, tested alone:
    turn), so the run ends honestly with `OutOfBudget`, not cut from outside.
 3. **compaction** — over the window: the oldest turns become a summary (by the same `Llm`), the prefix before it kept.
 4. **gate** — every `Tools` call through okay-guard's policy: allow, deny, or ask `Human` (under Acp, the client's).
-5. **journal** — every step in okay-guard's Ledger (a hash chain); a run replayed from it without a model.
+5. **journal** — every step in okay-guard's Ledger (a hash chain); a run replayed from it without a model. Kept the
+   INNERMOST (2026-11-03): it sees each call first and its final answer — a refusal of the gate's, stuck's, admit's
+   included — so a replay is the program alone, no interceptor and no person (it was outermost: a refusal never
+   reached it, and a replay of a run with one diverged).
 6. **events** — the trace as AG-UI events for any client.
 7. **forecast** — before a call that is not a read, the continuation run under a hypothesis: no captured k and no
    replay — the agent's state is data (`Ctx`), so the continuation IS `Agent.runWith` from the conversation up to the
@@ -62,6 +65,15 @@ Each guarantee is a handler transformer, on or off, tested alone:
    question (the CLI's terminal, the AG-UI interrupt). As good as the hypothesis: it gets the shape, not the content.
    Its requests go outward of it (not shown, not compacted, journalled — a replay reads them in place).
 
+8. **stuck** — a coeffect: a call decided by the history behind it (okay-scala's `Coeffects.aroundHistory`, its
+   comonad `History`). After `after` calls failed in a row (3 by default; a failure: an observation that is an error
+   no person chose — admit's refusals count, a person's refusal by the gate, the forecast or stuck itself does not:
+   `Obs.refused`), a call that is not a read is put to the person first: "N calls failed in a row — go
+   on with …?"; a no is the model's observation. Reads go on (looking is how an agent gets unstuck). CLI `--stuck N`
+   (0: off), ACP (the client's `request_permission`), serve (an interrupt). Placed inside admit (it sees a call first,
+   and admit's refusals come back to it as failures) and inside the gate (the gate's refusals come back to it too,
+   marked refused: not counted — seen first on Qwen3.6, three "no"s made it ask a fourth time).
+
 ## Laws: each guarantee a property test
 
 States only through real transitions (the program run on a hypothesis's random answers), never built by hand.
@@ -72,6 +84,8 @@ States only through real transitions (the program run on a hypothesis's random a
   over many runs, never one example.
 - **termination**: under any hypothesis, with a budget, it halts.
 - **replay**: run from the journal, the same trace.
+- **stuck**: under a hostile model, no call but a read reaches the world after `after` failures in a row unless the
+  person said yes — and with no failures, nobody is asked.
 
 ## Surfaces
 
