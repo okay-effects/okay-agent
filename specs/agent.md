@@ -180,6 +180,8 @@ States only through real transitions (the program run on a hypothesis's random a
    On Qwen3.6-35B: "add answer(), check it, commit" — at the edit the forecast saw the check and the commit (exactly
    what came), every step asked with it; "add answer2(), check it, do not commit" — nothing asked. Cost: the forecasts
    ~96 s of 150 s (the run's own turns ~54 s) — a forecast is 1–3 model turns.
+6. Effects inside generation (operator, 2026-11-03) — planned: symbol handles with symdex, the decode port and KV
+   forks in okay-mlx, the module manifest in okay-llm and okay-guard; specs/in-generation.md.
 
 Released 0.1.0 (2026-11-03): the libraries on GitHub Pages (https://okay-effects.github.io/okay-agent/maven), the
 native command for macOS on Apple Silicon a release asset, `install.sh` (RELEASING.md).
