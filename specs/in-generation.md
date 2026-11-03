@@ -109,6 +109,28 @@ session.
   call (text) or per generation summary (decode).
 - okay-remote: modules' activity on the phone; approval of modules with outside effects; choosing a fork's branch.
 
+
+## Stage 5 — nondeterminism and search as effects (operator, 2026-11-03)
+
+The model proposes, logic disposes. Search is a program over effects; the strategy is a handler.
+
+- Effects: `choose` (a choice point: take an alternative the model proposes), `fail` (an exact check rejected the
+  branch), `prove` (a step of a derivation, kept for the answer's proof).
+- `choose` = a KV snapshot (stage 3: mlx-scala's `snapshot` / `restore` — multi-shot, no replay); `fail` = restore
+  the latest choice point and take the next alternative. The failed branch disappears from the context physically
+  (the KV is restored), so it cannot bias the next attempt.
+- Checks are handlers: the compiler, the tests, a type check, a JSON Schema, an ontology's rules, okay-facts' data.
+- Search strategies are handlers of the same program: depth-first (Prolog), best-first by the model's own
+  probabilities (the default), beam. Diversity of alternatives is asked for explicitly (models propose look-alikes).
+- Answers carry a proof: which checks passed, which facts (exact, with sources) and which model judgements
+  (marked, with their confidence) a conclusion rests on.
+- First use in okay-agent: hypotheses of a fix (or of a failure's cause) as choice points, compile + tests as `fail`,
+  best-first; measured on `bench/` against plain retries (tasks solved, wall time, tokens).
+- Logic itself (unification, rules) runs in an ordinary engine on the CPU as a handler; for rules over facts a
+  Datalog engine (monotone, bottom-up — OWL 2 RL is Datalog), Prolog-style search only where alternatives are
+  generated. Logic compiled into weights is research (okay-inlay), not this stage.
+- Risks: search explosion (bound depth and branching, best-first), noisy model judgements (probabilistic facts,
+  marked in proofs), correlated alternatives.
 ## Later
 
 Activation and weights ports, with compiled modules (the transformer-compilation track: okay-inlay).
