@@ -22,7 +22,7 @@ saved (multi-shot without replay); interceptors see every operation, down to the
 | Port | Attaches at | Cost of a call | Where available |
 |---|---|---|---|
 | text | the conversation: tool calls (MCP) | stop, JSON, re-prefill | everywhere |
-| decode | the sampling loop: sees generated tokens, masks/forces/biases the next | per token, no extra tokens | local runtimes (okay-mlx) |
+| decode | the sampling loop: masks, forces or biases the next token | per token, no extra tokens | okay-mlx |
 | activation | the forward pass: reads/writes the residual at a layer | inside one pass | okay-mlx only |
 | weights | compiled modules inside the model | none | own open models (research, later) |
 
