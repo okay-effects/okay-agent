@@ -79,8 +79,7 @@ session.
 
 ## Later
 
-Activation and weights ports, with compiled modules (the transformer-compilation track; its library's name is being
-chosen by the operator).
+Activation and weights ports, with compiled modules (the transformer-compilation track: okay-inlay).
 
 ## Gotchas
 
