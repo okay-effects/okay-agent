@@ -24,7 +24,7 @@ import scala.jdk.CollectionConverters.*
   if task.isEmpty && replay.isEmpty then
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
                          |                  [--window N] [--dir D] [--yes] [--forecast N [--futures N]] [--stuck N]
-                         |                  [--timeout S] "<task>"
+                         |                  [--wander N] [--timeout S] "<task>"
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
