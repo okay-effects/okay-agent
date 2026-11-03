@@ -5,6 +5,23 @@ handlers, every guarantee an interceptor with its law, tested as a property. Loc
 (~0.9k tokens to start, against Claude Code's ~14k), requests that only ever append (okay-mlx's prefix cache keeps
 them), and every step ours to gate and record. The design: [`specs/agent.md`](specs/agent.md).
 
+## Install (macOS, Apple Silicon)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/okay-effects/okay-agent/master/install.sh | sh
+```
+
+The command in `~/.okay-agent/bin`, linked from `~/.local/bin`; a model behind a server speaking OpenAI's chat
+completions — [okay-mlx](https://github.com/okay-effects/okay-mlx)'s gateway on this Mac by default. Elsewhere:
+`sbt cliNative/nativeLink` (or `cliJVM/run`). The libraries, for a program of your own:
+
+```scala
+resolvers += "okay-agent" at "https://okay-effects.github.io/okay-agent/maven"
+libraryDependencies += "io.github.okay-effects" %%% "okay-agent" % "0.1.0"
+```
+
+## Use
+
 ```
 okay-agent "Rename greet to welcome in hello.py, run it, commit"      # in a project directory
 okay-agent --url http://127.0.0.1:8090/v1 --model mlx-community/Qwen3.6-35B-A3B-4bit --turns 40 --yes "…"

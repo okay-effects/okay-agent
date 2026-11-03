@@ -175,5 +175,8 @@ States only through real transitions (the program run on a hypothesis's random a
    what came), every step asked with it; "add answer2(), check it, do not commit" — nothing asked. Cost: the forecasts
    ~96 s of 150 s (the run's own turns ~54 s) — a forecast is 1–3 model turns.
 
+Released 0.1.0 (2026-11-03): the libraries on GitHub Pages (https://okay-effects.github.io/okay-agent/maven), the
+native command for macOS on Apple Silicon a release asset, `install.sh` (RELEASING.md).
+
 Tools of the first version: `read`, `write`, `edit` (replace a fragment), `bash`, `glob`, `grep`, `git_commit`. The
 system prompt short, in English, the tool-call rules explicit for Qwen.
