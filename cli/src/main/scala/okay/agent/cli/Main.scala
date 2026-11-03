@@ -17,7 +17,7 @@ import scala.jdk.CollectionConverters.*
   if args.headOption.contains("acp") then Main.acp(args.tail)
   if args.headOption.contains("serve") then Main.serve(args.tail)
   val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast",
-    "--timeout", "--stuck", "--futures")
+    "--timeout", "--stuck", "--futures", "--wander")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
     .map(_._1).mkString(" ")
   val replay = flag("--replay")
@@ -48,6 +48,8 @@ import scala.jdk.CollectionConverters.*
   val stuck = flag("--stuck").map(_.toInt).getOrElse(3)
   // --futures N: the forecast a tree of N nodes at most (each a model's turn), branching as commands pass or fail
   val futures = flag("--futures").map(_.toInt).getOrElse(0)
+  // --wander N: after N reads and searches in a row the model is told to answer with what it found (0: never)
+  val wander = flag("--wander").map(_.toInt).getOrElse(12)
   // a command's time at most (a build's test run takes minutes)
   val timeout = flag("--timeout").map(_.toInt).getOrElse(300)
   val workspace = Workspace(flag("--dir").map(Path.of(_)).getOrElse(Path.of("")).toAbsolutePath, timeout)
@@ -83,9 +85,9 @@ import scala.jdk.CollectionConverters.*
     "forecast" -> Json.num(horizon)).render)
   // the innermost sees a call first: the journal (each call's final answer, a refusal included — so a replay needs
   // no interceptor), shown, stuck, admitted, then gated
-  val inner = Admit.within[Row, Outcome](tools)(Stuck.asking[Row, Outcome](tools, stuck)(Main.shown[Row, Outcome](
-    Compact.within[Row, Outcome](window)(Journal.recording[Row, Outcome](
-      Agent.run[Row](Agent.start(task, tools, budget, notes)))))))
+  val inner = Admit.within[Row, Outcome](tools)(Stuck.asking[Row, Outcome](tools, stuck)(
+    Wander.nudging[Row, Outcome](tools, wander)(Main.shown[Row, Outcome](Compact.within[Row, Outcome](window)(
+      Journal.recording[Row, Outcome](Agent.run[Row](Agent.start(task, tools, budget, notes))))))))
   def imagine(c: Call): Obs =
     if tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then perform(c) else Main.imagined(c)
   val program =

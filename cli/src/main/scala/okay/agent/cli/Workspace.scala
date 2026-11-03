@@ -15,7 +15,7 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 300, limit: Int = 20
 
   def perform(call: Call): Obs =
     try call.name match
-      case "read" => read(arg(call, "path"))
+      case "read" => read(arg(call, "path"), Workspace.line(call, "start_line"), Workspace.line(call, "end_line"))
       case "write" => write(arg(call, "path"), arg(call, "content"))
       case "edit" => edit(arg(call, "path"), arg(call, "old"), arg(call, "new"))
       case "bash" => bash(arg(call, "command"))
@@ -41,11 +41,11 @@ final class Workspace(val root: Path, timeoutSeconds: Int = 300, limit: Int = 20
   private def cut(s: String) = if s.length <= limit then s else s.take(limit) + s"\n… (${s.length - limit} more)"
   private def rel(p: Path) = real.relativize(p).toString
 
-  private def read(p: String) =
+  private def read(p: String, from: Option[Int], to: Option[Int]) =
     val f = inside(p)
     if Files.isDirectory(f) then Obs(Files.list(f).iterator.asScala.map(x => rel(x) +
       (if Files.isDirectory(x) then "/" else "")).toVector.sorted.mkString("\n"))
-    else Obs(cut(Files.readString(f, UTF_8)))
+    else Obs(Workspace.lines(Files.readString(f, UTF_8), from, to, limit))
 
   private def write(p: String, content: String) =
     val f = inside(p)
@@ -135,6 +135,32 @@ object Workspace:
 
   def quote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
+  /** a line number a call gives (`start_line`, `end_line`): a number, or a number's text */
+  def line(c: Call, k: String): Option[Int] = c.args.field(k).flatMap {
+    case Json.Num(n) => Some(n.toInt)
+    case Json.Str(t) => t.trim.toIntOption
+    case _ => None
+  }
+
+  /** a file's text as `read` gives it: whole (cut to `limit`, the cut saying how to read on), or lines `from` to `to`
+   * (1-based, inclusive, either end open) after a line saying which of how many */
+  def lines(text: String, from: Option[Int], to: Option[Int], limit: Int): String =
+    if from.isEmpty && to.isEmpty then
+      if text.length <= limit then text
+      else
+        val shown = text.take(limit)
+        val n = shown.count(_ == '\n') + 1
+        s"$shown\n… (${text.length - limit} more characters: read on with start_line = $n)"
+    else
+      val all = text.split("\n", -1)
+      val a = from.getOrElse(1).max(1)
+      val b = to.getOrElse(all.length).min(all.length)
+      if a > all.length then s"(the file has ${all.length} lines)"
+      else
+        val body = all.slice(a - 1, b).mkString("\n")
+        val cutBody = if body.length <= limit then body else body.take(limit) + "\n…"
+        s"(lines $a–$b of ${all.length})\n$cutBody"
+
   private def obj(props: (String, String, String)*) = Json.obj("type" -> Json.Str("object"),
     "properties" -> Json.Obj(props.toVector.map((n, d, _) => n -> Json.obj("type" -> Json.Str("string"),
       "description" -> Json.Str(d)))),
@@ -142,7 +168,12 @@ object Workspace:
 
   /** the tools offered: short descriptions (a local model reads them each session) */
   val tools: Vector[ToolSpec] = Vector(
-    ToolSpec("read", "Read a file (or list a directory).", obj(("path", "relative path", "required")),
+    ToolSpec("read", "Read a file (or list a directory); a long one in parts: start_line, end_line.",
+      Json.obj("type" -> Json.Str("object"), "properties" -> Json.obj(
+        "path" -> Json.obj("type" -> Json.Str("string"), "description" -> Json.Str("relative path")),
+        "start_line" -> Json.obj("type" -> Json.Str("integer"), "description" -> Json.Str("first line, 1-based")),
+        "end_line" -> Json.obj("type" -> Json.Str("integer"), "description" -> Json.Str("last line, inclusive"))),
+        "required" -> Json.arr(Json.Str("path"))),
       ToolSpec.Kind.Read),
     ToolSpec("write", "Write a whole file (created if missing).",
       obj(("path", "relative path", "required"), ("content", "the file's text", "required")), ToolSpec.Kind.Write),

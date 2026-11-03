@@ -30,7 +30,8 @@ object Agent:
       |Rules:
       |- Act with tool calls; one step at a time; read before you edit.
       |- Paths are relative to the project directory.
-      |- Prefer `edit` (replace an exact fragment) over rewriting a whole file.
+      |- Prefer `edit` (replace an exact fragment) over rewriting a whole file; read a long file in parts.
+      |- Asked about something the project does not have: say so, with what you found; do not search on and on.
       |- When the task is done, answer in a few sentences with no tool call: that ends the run.""".stripMargin
 
   /** `notes`: lines added to the system prompt — what the tools offered this run are for */

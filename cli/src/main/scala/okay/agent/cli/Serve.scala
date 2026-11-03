@@ -115,7 +115,8 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
       any => lastStreamed = any) _
     // the innermost interceptor sees a call first: shown, stuck, then admitted, then gated
     val inner = Admit.within[Row, (Outcome, Ctx)](project.tools)(Stuck.asking[Row, (Outcome, Ctx)](project.tools,
-      stuck)(events(Compact.within[Row, (Outcome, Ctx)](window)(Agent.runOn[Row](ctx)))))
+      stuck)(Wander.nudging[Row, (Outcome, Ctx)](project.tools)(events(Compact.within[Row, (Outcome, Ctx)](window)(
+        Agent.runOn[Row](ctx))))))
     // with a forecast: asked only when the call or what comes after it is risky — the forecast in the interrupt
     def imagine(c: Call): Obs = if project.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
       project.perform(c) else Main.imagined(c)

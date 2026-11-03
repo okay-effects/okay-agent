@@ -122,8 +122,8 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
     type Row[X] = (Llm + Tools + Human + Console + Journal)[X]
     // the innermost sees a call first: the journal (its final answer, a refusal included), shown, stuck, admitted
     val inner = Admit.within[Row, (Outcome, Ctx)](s.tools)(Stuck.asking[Row, (Outcome, Ctx)](s.tools, stuck)(
-      shown[Row, (Outcome, Ctx)](Compact.within[Row, (Outcome, Ctx)](window)(
-        Journal.recording[Row, (Outcome, Ctx)](Agent.runOn[Row](ctx))))))
+      Wander.nudging[Row, (Outcome, Ctx)](s.tools)(shown[Row, (Outcome, Ctx)](
+        Compact.within[Row, (Outcome, Ctx)](window)(Journal.recording[Row, (Outcome, Ctx)](Agent.runOn[Row](ctx)))))))
     def imagine(c: Call): Obs = if s.tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then
       perform(s)(c) else Main.imagined(c)
     val program = if forecast > 0 then Forecast.gate[Row, (Outcome, Ctx)](s.tools, forecast, imagine,
@@ -208,7 +208,9 @@ final class AcpAgent(in: BufferedReader, out: String => Unit, model: Path => Llm
     def str(k: String) = call.args.field(k).collect { case Json.Str(v) => v }
     val o = try
       routes(s, call).getOrElse(call.name match
-        case "read" if fs => readFile(s, s.ws.inside(str("path").getOrElse(""))).fold(Obs(_, error = true), Obs(_))
+        case "read" if fs => readFile(s, s.ws.inside(str("path").getOrElse(""))).fold(Obs(_, error = true),
+            text => Obs(Workspace.lines(text, Workspace.line(call, "start_line"), Workspace.line(call, "end_line"),
+              20000)))
         case "write" if fs =>
           val f = s.ws.inside(str("path").getOrElse(""))
           val content = str("content").getOrElse("")

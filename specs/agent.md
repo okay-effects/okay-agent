@@ -83,6 +83,12 @@ Each guarantee is a handler transformer, on or off, tested alone:
    and admit's refusals come back to it as failures) and inside the gate (the gate's refusals come back to it too,
    marked refused: not counted — seen first on Qwen3.6, three "no"s made it ask a fourth time).
 
+9. **wander** — a coeffect too: after `after` reads and searches in a row (12 by default; `--wander N`, 0 off), the
+   observation tells the model: if what it looks for is not in this project, say so and answer with what it found.
+   Which calls run is not changed (its law: the same calls with it as without, 200 runs). Seen in bench/: a question
+   about something the project did not have, 40 turns of grep and read. With it the system prompt says so too, and
+   `read` takes `start_line`, `end_line` (the model asked for them; the whole file came each time).
+
 ## Laws: each guarantee a property test
 
 States only through real transitions (the program run on a hypothesis's random answers), never built by hand.

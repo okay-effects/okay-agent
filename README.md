@@ -83,6 +83,9 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
   world stuck unless the person said yes to it (300 runs of a hostile model in a failing world); nobody asked when
   nothing fails; a run replays from its journal — kept innermost, so every refusal is in it.
 
+- `--wander N` (12 by default) — after N reads and searches in a row the model is told to answer with what it found if
+  the project does not have it; `read` takes `start_line` and `end_line` for a long file.
+
 ## Surfaces
 
 - `okay-agent acp` — an ACP agent over stdio (Zed, okay-remote: "okay-agent · <model>" on its New screen, the phone

@@ -36,3 +36,13 @@ class WorkspaceSuite extends munit.FunSuite:
     assertEquals(w.perform(call("bash", "command" -> "echo hi")).text.trim, "hi")
     val failed = w.perform(call("bash", "command" -> "exit 3"))
     assert(failed.error && failed.text.contains("exit 3"))
+
+  test("read in parts: lines from and to, which of how many; a long file cut, saying where to read on"):
+    val text = (1 to 50).map(i => s"line $i").mkString("\n")
+    assertEquals(Workspace.lines(text, Some(3), Some(5), 20000), "(lines 3–5 of 50)\nline 3\nline 4\nline 5")
+    assertEquals(Workspace.lines(text, Some(49), None, 20000), "(lines 49–50 of 50)\nline 49\nline 50")
+    assertEquals(Workspace.lines(text, Some(60), None, 20000), "(the file has 50 lines)")
+    assert(Workspace.lines(text, None, None, 30).endsWith("read on with start_line = 5)"),
+      Workspace.lines(text, None, None, 30))
+    assertEquals(Workspace.lines(text, None, None, 20000), text)
+
