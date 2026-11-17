@@ -25,6 +25,7 @@ import scala.jdk.CollectionConverters.*
     System.err.println("""usage: okay-agent [--url http://127.0.0.1:8090/v1] [--model M] [--turns N] [--tokens N]
                          |                  [--window N] [--dir D] [--yes] [--forecast N [--futures N]] [--stuck N]
                          |                  [--wander N] [--timeout S] "<task>"
+                         |                  --unattended: nobody asked; risky calls (commit, push, rm …) refused
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
@@ -40,10 +41,14 @@ import scala.jdk.CollectionConverters.*
   val model = flag("--model").orElse(sys.env.get("OKAY_AGENT_MODEL")).getOrElse(Main.firstModel(url))
   val window = Compact.Window(flag("--window").map(_.toInt).getOrElse(32768))
   val budget = Budget(flag("--turns").map(_.toInt).getOrElse(40), flag("--tokens").map(_.toInt).getOrElse(32000))
-  val ask: ToolSpec.Kind => Boolean = if args.contains("--yes") then _ => false else _ != ToolSpec.Kind.Read
+  // --unattended: nobody to ask (okay-loop's worker) — every call goes on but a risky one, refused (Gate.refusing);
+  // a question (stuck) answered "go on"
+  val unattended = args.contains("--unattended")
+  val ask: ToolSpec.Kind => Boolean =
+    if args.contains("--yes") || unattended then _ => false else _ != ToolSpec.Kind.Read
   // --forecast N: before a call that is not a read, what comes after it forecast (N turns, the model the same, the
   // calls imagined, reads real); asked only when it or what comes is risky
-  val horizon = if args.contains("--yes") then 0 else flag("--forecast").map(_.toInt).getOrElse(0)
+  val horizon = if args.contains("--yes") || unattended then 0 else flag("--forecast").map(_.toInt).getOrElse(0)
   // --stuck N: after N calls failed in a row, a call that is not a read asked first (0: never)
   val stuck = flag("--stuck").map(_.toInt).getOrElse(3)
   // --futures N: the forecast a tree of N nodes at most (each a model's turn), branching as commands pass or fail
@@ -91,10 +96,12 @@ import scala.jdk.CollectionConverters.*
   def imagine(c: Call): Obs =
     if tools.find(_.name == c.name).exists(_.kind == ToolSpec.Kind.Read) then perform(c) else Main.imagined(c)
   val program =
-    if horizon > 0 then Forecast.gate[Row, Outcome](tools, horizon, imagine, futures = futures)(inner)
+    if unattended then Gate.refusing[Row, Outcome](tools)(inner)
+    else if horizon > 0 then Forecast.gate[Row, Outcome](tools, horizon, imagine, futures = futures)(inner)
     else Gate.asking[Row, Outcome](tools, ask)(inner)
   val outcome = try run(Journal.to(e => { out.println(e.render); out.flush() })(Console.stdout(
-    Human.by(Main.terminal)(Tools.by(perform)(Llm.on(HttpBackend(url, model))(program))))))
+    Human.by(if unattended then (_: String) => "y" else Main.terminal)(Tools.by(perform)(
+      Llm.on(HttpBackend(url, model))(program))))))
     finally
       out.close()
       servers.foreach(_.close())

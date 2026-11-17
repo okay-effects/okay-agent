@@ -69,3 +69,13 @@ object Gate:
               else pure(Obs(s"the person did not allow it${if a.trim.isEmpty then "" else s": $a"}", error = true,
                 refused = true)))
         case _ => proceed)
+
+  /** UNATTENDED (nobody to ask — okay-loop's worker): every call goes on but a risky one — a tool not to be undone,
+   * or a command that commits, pushes, throws work away, removes, publishes, changes the machine
+   * (`Forecast.danger`) — refused without asking; the refusal the model's observation. Whoever runs it commits */
+  def refusing[R[_], A](tools: Vector[ToolSpec])(p: A ! R)(using In[Tools, R]): A ! R =
+    around[Tools, R, A](p)([X] => (op: Tools[X], proceed: X ! R) => op match
+      case Tools.Perform(call) => Forecast.danger(tools)(call) match
+        case Some(why) => pure(Obs(s"refused: it $why — nobody is here to allow it; do not commit, push or " +
+            "remove: whoever runs you checks the work and commits it", error = true, refused = true))
+        case None => proceed)

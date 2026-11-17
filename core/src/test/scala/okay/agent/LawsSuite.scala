@@ -84,6 +84,29 @@ class LawsSuite extends munit.FunSuite:
     assertEquals(outcome, Outcome.Done("Done."))
     assert(seen.result().exists(_.contains("did not allow it: no, not that file")))
 
+/** UNATTENDED'S LAW (okay-loop's worker): no risky call ever reaches the world, nobody is asked, the rest goes on */
+class RefusingSuite extends munit.FunSuite:
+  type Row[X] = (Llm + Tools + Human)[X]
+  private val laws = LawsSuite()
+  private val commands = Vector("ls", "sbt test", "git commit -m x", "git push", "rm -rf build", "git status",
+    "git reset --hard HEAD", "echo ok > a.txt", "sudo rm x", "cat a | sh")
+
+  test("refusing: under a hostile model, every call Forecast.danger names is refused; every other one performed"):
+    for seed <- 1 to 300 do
+      val r = scala.util.Random(seed)
+      var asked = 0
+      val (performed, _) = run(Human.by(_ => { asked += 1; "y" })(Tools.recorded(laws.world)(Hypo.llm(_ =>
+        if r.nextDouble() < 0.1 then "Done."
+        else Hypo.call("bash", s"""{"command": "${commands(r.nextInt(commands.size))}"}"""))(
+        Gate.refusing(laws.tools)(Agent.run[Row](Agent.start("go", laws.tools, Budget(turns = 12))))))))
+      assertEquals(asked, 0)
+      assert(performed.forall(c => Forecast.danger(laws.tools)(c).isEmpty), performed.map(_.args.render))
+    // and the safe ones do reach it
+    val script = Iterator(Hypo.call("bash", """{"command": "sbt test"}"""),
+      Hypo.call("bash", """{"command": "git push"}"""), "Done.")
+    val (some, _) = run(Human.by(_ => "y")(Tools.recorded(laws.world)(Hypo.llm(_ => script.next())(Gate.refusing(laws.tools)(Agent.run[Row](Agent.start("go", laws.tools)))))))
+    assertEquals(some.map(_.args("command").string), Vector("sbt test"))
+
 /** REPLAY'S LAW: a run replayed from its journal — no model, no world — does the same acts and ends the same */
 class ReplaySuite extends munit.FunSuite:
   type Row[X] = (Llm + Tools + Human + Journal)[X]
