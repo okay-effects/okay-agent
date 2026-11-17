@@ -21,14 +21,24 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
     timeoutSeconds: Int = 300):
   lazy val project: Project = Project(root, mcp, timeoutSeconds)
 
-  /** where a run's events go: a response's stream, until the run ends or pauses */
-  private final class Sink(out: OutputStream, val runId: String):
+  /** where a run's events go — a response's stream, or any writer (`write` throws IOException once its reader is
+   * gone) — until the run ends or pauses */
+  private final class Sink(write: Json => Unit, val runId: String):
     val done = CountDownLatch(1)
     @volatile var gone = false
     def emit(e: Json): Unit = if !gone then
-      try { out.write(AgUi.sse(e).getBytes("UTF-8")); out.flush() }
+      try write(e)
       catch case _: java.io.IOException => gone = true
     def finish(): Unit = done.countDown()
+
+  /** a run, its events to `emit`, back when it ends or pauses (an interrupt): what another face (OpenAI's) runs */
+  def runTo(in: AgUi.RunInput, emit: Json => Unit): Unit =
+    val sink = Sink(emit, in.runId)
+    run(in, sink)
+    sink.done.await()
+
+  /** the interrupt a thread's program waits on, if it waits */
+  def waitingFor(threadId: String): Option[String] = synchronized(threads.get(threadId)).flatMap(_.waiting)
 
   private final class Thread_(val id: String):
     var ctx: Option[Ctx] = None
@@ -47,9 +57,7 @@ final class AgUiServer(root: Path, model: () => Llm.Backend, ask: ToolSpec.Kind 
     case ("POST", "/" | "/agent") =>
       val in = AgUi.RunInput.parse(Json.fromText(req.body))
       head(out, 200, "text/event-stream", "Cache-Control: no-cache\r\n")
-      val sink = Sink(out, in.runId)
-      run(in, sink)
-      sink.done.await()
+      runTo(in, e => { out.write(AgUi.sse(e).getBytes("UTF-8")); out.flush() })
     case _ => whole(out, 404, """{"error":"not found"}""")
 
   private def head(out: OutputStream, status: Int, contentType: String, extra: String): Unit =

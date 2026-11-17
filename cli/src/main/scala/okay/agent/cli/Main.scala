@@ -16,6 +16,7 @@ import scala.jdk.CollectionConverters.*
     case i => args.lift(i + 1)
   if args.headOption.contains("acp") then Main.acp(args.tail)
   if args.headOption.contains("serve") then Main.serve(args.tail)
+  if args.headOption.contains("openai") then Main.openai(args.tail)
   val valued = Set("--url", "--model", "--turns", "--tokens", "--dir", "--window", "--replay", "--forecast",
     "--timeout", "--stuck", "--futures", "--wander")
   val task = args.zipWithIndex.filterNot((a, i) => a.startsWith("--") || (i > 0 && valued(args(i - 1))))
@@ -29,6 +30,7 @@ import scala.jdk.CollectionConverters.*
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
+                         |       okay-agent openai [--port 8092] [--url U] [--ask commands|all|none]  (a model for opencode)
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
@@ -145,6 +147,23 @@ object Main:
       futures = flag("--futures").map(_.toInt).getOrElse(0))
     System.err.println(s"okay-agent · $model · $root · AG-UI: POST /agent")
     okay.llm.Server.run(flag("--port").map(_.toInt).getOrElse(8091))(server.serve)
+    sys.exit(0)
+
+  /** okay-agent openai: the agent as a model behind OpenAI's chat completions — opencode's (OpenChamber's, the
+   * phone's) sessions its conversations; `--ask`: what is put to the person (commands by default) */
+  def openai(args: Seq[String]): Nothing =
+    def flag(n: String) = args.indexOf(n) match
+      case -1 => None
+      case i => args.lift(i + 1)
+    val url = flag("--url").orElse(sys.env.get("OKAY_AGENT_URL")).getOrElse("http://127.0.0.1:8090/v1")
+    val ask: ToolSpec.Kind => Boolean = flag("--ask").getOrElse("commands") match
+      case "all" => _ != ToolSpec.Kind.Read
+      case "none" => _ => false
+      case _ => _ == ToolSpec.Kind.Exec
+    val face = OpenAiFace(url, ask, flag("--timeout").map(_.toInt).getOrElse(300))
+    val port = flag("--port").map(_.toInt).getOrElse(8092)
+    System.err.println(s"okay-agent · OpenAI chat completions on :$port · models of $url")
+    okay.llm.Server.run(port)(face.serve)
     sys.exit(0)
 
   /** okay-agent acp: the agent for an ACP client, over stdin and stdout (nothing else written there) */

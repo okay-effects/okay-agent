@@ -93,3 +93,10 @@ val outcome = run(Console.stdout(Human.by(terminal)(Tools.by(workspace.perform)(
 - `okay-agent serve [--port 8091] [--forecast N]` — an AG-UI server (`POST /agent`), any AG-UI client a front end: a
   call to be asked about ends the run with an interrupt, the program waits for it alive, the next run's `resume`
   answers it. okay-remote serves every session the same way (`POST /agui`).
+- `okay-agent openai [--port 8092] [--ask commands|all|none]` — the agent as a model behind OpenAI's chat
+  completions: opencode lists it (`opencode/setup.sh` adds the provider `okay-agent` and keeps the service running),
+  so its conversations are opencode's sessions — in OpenChamber on the desktop, the web and OpenChamber Mobile. Its
+  steps are the reply's text; a command to be asked about ends the reply with the question, and the session's next
+  message answers it (yes, or no and why).
+- `openchamber/` — an OpenChamber extension (a rail panel; web and desktop): the conversations with their tool calls,
+  approvals as Allow / Deny.

@@ -135,6 +135,19 @@ States only through real transitions (the program run on a hypothesis's random a
   replay — and the next run's `resume` answers it, the program going on, its events on that run's stream (no answer
   in 30 minutes: the run cancelled). A new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
   Order of interceptors (the innermost sees a call first): shown, then admitted, then gated.
+- **OpenAI (opencode, OpenChamber, its phone app)** — `okay-agent openai [--port 8092] [--ask commands|all|none]`:
+  the agent as a MODEL behind OpenAI's chat completions, so opencode lists it (provider `okay-agent`, its models the
+  gateway's) and every client of opencode — OpenChamber on the desktop, the web and OpenChamber Mobile (which loads
+  no extension) — keeps its conversations as opencode's own sessions. Behind a request the whole program runs (its
+  tools, gate, journal; opencode's tools and system prompt unused). A session is a thread of `AgUiServer` (one per
+  directory and model): its id opencode's `x-opencode-session-id`, its directory the "Working directory:" opencode's
+  system prompt names (`x-okay-session`/`x-okay-directory` for another client). Its steps are the reply's text: the
+  model's words as they come, a call a line (`▸ name brief`, then `✓ N lines` or `✗ why`). A call to be asked
+  about (commands, by default) ends the reply with the question; the program waits ALIVE and the session's next
+  message answers it (yes/ok/да allows; anything else a no, its words the reason). A request without tools (a title)
+  is the plain model's. The client gone mid-run: cancelled before the next step. `opencode/setup.sh`: the provider
+  in opencode's config, the LaunchAgent. Law: OpenAiFaceSuite (a session's messages one conversation; a yes performs
+  the asked call, a no never does and its reason reaches the model; a title the plain model's).
 - **OpenChamber** — `openchamber/`, an OpenChamber extension (its guest SDK, `apiVersion` 1): a rail panel and a
   local service. OpenChamber shows opencode's sessions only, so okay-agent's are not put into opencode (a
   synthetic message there schedules opencode's own run; ACP is not spoken by it): they are the panel's. The service
@@ -145,7 +158,7 @@ States only through real transitions (the program run on a hypothesis's random a
   `GET /threads/:id?since=n` (the events after n, the state: running, waiting with its interrupt, idle). The
   panel polls (the SDK has no streaming to a panel): the conversation as it comes, each tool call with its result,
   an approval as Allow / Deny. Sessions live while OpenChamber runs; each prompt journalled by okay-agent as always.
-  Web and desktop (OpenChamber loads no extension on mobile).
+  Web and desktop only (OpenChamber loads no extension on mobile: there, the OpenAI surface).
 
 ## Where it lives
 
@@ -191,7 +204,9 @@ States only through real transitions (the program run on a hypothesis's random a
    On Qwen3.6-35B: "add answer(), check it, commit" — at the edit the forecast saw the check and the commit (exactly
    what came), every step asked with it; "add answer2(), check it, do not commit" — nothing asked. Cost: the forecasts
    ~96 s of 150 s (the run's own turns ~54 s) — a forecast is 1–3 model turns.
-6. OpenChamber — 2026-11-17: `openchamber/` (the extension: a panel and a service over `okay-agent serve`).
+6. OpenChamber — 2026-11-17: `openchamber/` (the extension: a panel and a service over `okay-agent serve`);
+   `okay-agent openai` (OpenAiFace: the agent as opencode's model — on the phone too). Checked through opencode 2.3
+   (`opencode run`, Qwen3.5-4B): a write done; `ls` asked, "yes" as the session's next message, the files listed.
 7. Effects inside generation (operator, 2026-11-03) — planned: symbol handles with symdex, the decode port and KV
    forks in okay-mlx, the module manifest in okay-llm and okay-guard; specs/in-generation.md.
 
