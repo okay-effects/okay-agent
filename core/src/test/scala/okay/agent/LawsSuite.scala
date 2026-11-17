@@ -104,7 +104,8 @@ class RefusingSuite extends munit.FunSuite:
     // and the safe ones do reach it
     val script = Iterator(Hypo.call("bash", """{"command": "sbt test"}"""),
       Hypo.call("bash", """{"command": "git push"}"""), "Done.")
-    val (some, _) = run(Human.by(_ => "y")(Tools.recorded(laws.world)(Hypo.llm(_ => script.next())(Gate.refusing(laws.tools)(Agent.run[Row](Agent.start("go", laws.tools)))))))
+    val (some, _) = run(Human.by(_ => "y")(Tools.recorded(laws.world)(Hypo.llm(_ => script.next())(
+      Gate.refusing(laws.tools)(Agent.run[Row](Agent.start("go", laws.tools)))))))
     assertEquals(some.map(_.args("command").string), Vector("sbt test"))
 
 /** REPLAY'S LAW: a run replayed from its journal — no model, no world — does the same acts and ends the same */
