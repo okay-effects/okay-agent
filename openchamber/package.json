@@ -1,0 +1,23 @@
+{
+  "name": "okay-agent-openchamber",
+  "version": "0.1.0",
+  "description": "okay-agent in OpenChamber: its conversations in a rail panel, approvals as Allow / Deny",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "esbuild panel/main.src.js --bundle --format=iife --platform=browser --target=es2020 --outfile=panel/main.js"
+  },
+  "devDependencies": {
+    "@openchamber/sdk": "2.5.3",
+    "esbuild": "0.25.10"
+  },
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": { "openchamber": ">=1.22.0" },
+    "contributes": {
+      "panel": { "id": "okay-agent", "name": "okay-agent", "icon": "robot-2", "entry": "panel/index.html" },
+      "capabilities": [],
+      "service": { "entry": "service/main.js", "runtime": "host", "permissions": { "exec": ["okay-agent"] } }
+    }
+  }
+}

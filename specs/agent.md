@@ -135,6 +135,17 @@ States only through real transitions (the program run on a hypothesis's random a
   replay — and the next run's `resume` answers it, the program going on, its events on that run's stream (no answer
   in 30 minutes: the run cancelled). A new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
   Order of interceptors (the innermost sees a call first): shown, then admitted, then gated.
+- **OpenChamber** — `openchamber/`, an OpenChamber extension (its guest SDK, `apiVersion` 1): a rail panel and a
+  local service. OpenChamber shows opencode's sessions only, so okay-agent's are not put into opencode (a
+  synthetic message there schedules opencode's own run; ACP is not spoken by it): they are the panel's. The service
+  (Node, no dependencies; OpenChamber starts it on loopback after the person allows it once) runs one
+  `okay-agent serve` per project directory and model, keeps each thread's AG-UI events, and answers the panel:
+  `GET /models` (the gateway's), `GET /threads?directory=`, `POST /threads` {directory, model, text},
+  `POST /threads/:id/prompt` {text}, `POST /threads/:id/resume` {approved, reason?}, `POST /threads/:id/cancel`,
+  `GET /threads/:id?since=n` (the events after n, the state: running, waiting with its interrupt, idle). The
+  panel polls (the SDK has no streaming to a panel): the conversation as it comes, each tool call with its result,
+  an approval as Allow / Deny. Sessions live while OpenChamber runs; each prompt journalled by okay-agent as always.
+  Web and desktop (OpenChamber loads no extension on mobile).
 
 ## Where it lives
 
@@ -180,7 +191,8 @@ States only through real transitions (the program run on a hypothesis's random a
    On Qwen3.6-35B: "add answer(), check it, commit" — at the edit the forecast saw the check and the commit (exactly
    what came), every step asked with it; "add answer2(), check it, do not commit" — nothing asked. Cost: the forecasts
    ~96 s of 150 s (the run's own turns ~54 s) — a forecast is 1–3 model turns.
-6. Effects inside generation (operator, 2026-11-03) — planned: symbol handles with symdex, the decode port and KV
+6. OpenChamber — 2026-11-17: `openchamber/` (the extension: a panel and a service over `okay-agent serve`).
+7. Effects inside generation (operator, 2026-11-03) — planned: symbol handles with symdex, the decode port and KV
    forks in okay-mlx, the module manifest in okay-llm and okay-guard; specs/in-generation.md.
 
 Released 0.1.0 (2026-11-03): the libraries on GitHub Pages (https://okay-effects.github.io/okay-agent/maven), the

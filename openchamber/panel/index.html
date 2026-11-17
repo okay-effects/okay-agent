@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { display: flex; flex-direction: column; font: 13px/1.45 var(--oc-font, system-ui, sans-serif);
+    background: var(--oc-surface, var(--background, Canvas)); color: var(--oc-text, var(--foreground, CanvasText)); }
+  header, footer { display: flex; gap: 6px; padding: 8px; align-items: center; flex-wrap: wrap; }
+  header { border-bottom: 1px solid var(--oc-border, rgba(128,128,128,.3)); }
+  footer { border-top: 1px solid var(--oc-border, rgba(128,128,128,.3)); flex-direction: column; align-items: stretch; }
+  #where { font-weight: 600; }
+  select, textarea, input, button { font: inherit; color: inherit; background: transparent;
+    border: 1px solid var(--oc-border, rgba(128,128,128,.4)); border-radius: 6px; padding: 4px 6px; }
+  select { max-width: 100%; flex: 1 1 140px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--oc-primary, #3b82f6); color: var(--oc-primary-foreground, #fff); border: 0; }
+  button:disabled { opacity: .5; cursor: default; }
+  #log { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .msg { white-space: pre-wrap; word-break: break-word; }
+  .user { align-self: flex-end; max-width: 90%; padding: 6px 8px; border-radius: 8px;
+    background: rgba(128,128,128,.15); }
+  .note { opacity: .6; font-size: 12px; }
+  .error { color: var(--error-text, #dc2626); }
+  .tool { border: 1px solid var(--oc-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 2px 6px; }
+  .tool summary { cursor: pointer; font-family: var(--oc-mono, ui-monospace, monospace); font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  pre { margin: 4px 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 var(--oc-mono, ui-monospace, monospace);
+    max-height: 300px; overflow: auto; }
+  pre.args { opacity: .7; }
+  #ask { border: 1px solid var(--warning-text, #d97706); border-radius: 6px; padding: 6px; display: flex;
+    flex-direction: column; gap: 6px; }
+  #ask-text { font-family: var(--oc-mono, ui-monospace, monospace); font-size: 12px; white-space: pre-wrap;
+    word-break: break-word; max-height: 160px; overflow: auto; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row > input { flex: 1; min-width: 0; }
+  #prompt { resize: vertical; min-height: 56px; width: 100%; }
+  #state { opacity: .7; font-size: 12px; flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <span id="where">…</span>
+  <select id="threads" title="Conversations in this project"><option value="">New conversation</option></select>
+  <select id="model" title="Model (okay-mlx's gateway)"></select>
+</header>
+<div id="log"></div>
+<footer>
+  <div id="ask" hidden>
+    <div>okay-agent asks:</div>
+    <div id="ask-text"></div>
+    <div class="row"><button id="allow" class="primary">Allow</button><button id="deny">Deny</button>
+      <input id="reason" placeholder="why not (optional)"></div>
+  </div>
+  <textarea id="prompt" placeholder="Ask okay-agent… (⌘↵ to send)"></textarea>
+  <div class="row"><span id="state"></span><button id="stop" hidden>Stop</button>
+    <button id="send" class="primary">Send</button></div>
+</footer>
+<script src="main.js"></script>
+</body>
+</html>
