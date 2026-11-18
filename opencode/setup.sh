@@ -30,6 +30,10 @@ if [ -f "$conf" ] && ! grep -q '"okay-agent"' "$conf"; then
   echo "provider okay-agent added to $conf (backup: $conf.okay-agent.bak)"
 fi
 
+# the agent: `okay-agent` in opencode's agent list — its model okay-agent's, every edit and command asked (the phone's
+# Allow / Deny); reads go on
+mkdir -p "$cfg/agents" && cp "$(dirname "$0")/okay-agent-agent.md" "$cfg/agents/okay-agent.md"
+
 # the service: `okay-agent openai` on :8092, kept running by launchd
 bin=$(command -v okay-agent || echo ~/.local/bin/okay-agent)
 plist=~/Library/LaunchAgents/io.github.okay-effects.okay-agent-openai.plist
