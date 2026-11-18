@@ -30,7 +30,7 @@ import scala.jdk.CollectionConverters.*
                          |       okay-agent --replay <journal.jsonl>   (the run again from its journal, no model)
                          |       okay-agent acp [--url U] [--model M] [--forecast N]   (an ACP agent over stdio)
                          |       okay-agent serve [--port 8091] [--dir D] [--yes] [--forecast N] [--url U] [--model M]
-                         |       okay-agent openai [--port 8092] [--url U] [--ask commands|all|none]  (a model for opencode)
+                         |       okay-agent openai [--port 8092] [--url U] [--tools client|own [--ask commands|all|none]]
                          |""".stripMargin)
     sys.exit(2)
   replay.foreach { file =>
@@ -160,7 +160,8 @@ object Main:
       case "all" => _ != ToolSpec.Kind.Read
       case "none" => _ => false
       case _ => _ == ToolSpec.Kind.Exec
-    val face = OpenAiFace(url, ask, flag("--timeout").map(_.toInt).getOrElse(300))
+    val face = OpenAiFace(url, ask, flag("--timeout").map(_.toInt).getOrElse(300),
+      own = flag("--tools").contains("own"))
     val port = flag("--port").map(_.toInt).getOrElse(8092)
     System.err.println(s"okay-agent · OpenAI chat completions on :$port · models of $url")
     okay.llm.Server.run(port)(face.serve)

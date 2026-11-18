@@ -135,19 +135,31 @@ States only through real transitions (the program run on a hypothesis's random a
   replay — and the next run's `resume` answers it, the program going on, its events on that run's stream (no answer
   in 30 minutes: the run cancelled). A new prompt while it waits, or while a run is on: RUN_ERROR. A client gone mid-run: cancelled before the next step.
   Order of interceptors (the innermost sees a call first): shown, then admitted, then gated.
-- **OpenAI (opencode, OpenChamber, its phone app)** — `okay-agent openai [--port 8092] [--ask commands|all|none]`:
-  the agent as a MODEL behind OpenAI's chat completions, so opencode lists it (provider `okay-agent`, its models the
+- **OpenAI (opencode, OpenChamber, its phone app)** — `okay-agent openai [--port 8092] [--tools client|own]`: the
+  agent as a MODEL behind OpenAI's chat completions, so opencode lists it (provider `okay-agent`, its models the
   gateway's) and every client of opencode — OpenChamber on the desktop, the web and OpenChamber Mobile (which loads
-  no extension) — keeps its conversations as opencode's own sessions. Behind a request the whole program runs (its
-  tools, gate, journal; opencode's tools and system prompt unused). A session is a thread of `AgUiServer` (one per
-  directory and model): its id opencode's `x-opencode-session-id`, its directory the "Working directory:" opencode's
-  system prompt names (`x-okay-session`/`x-okay-directory` for another client). Its steps are the reply's text: the
-  model's words as they come, a call a line (`▸ name brief`, then `✓ N lines` or `✗ why`). A call to be asked
-  about (commands, by default) ends the reply with the question; the program waits ALIVE and the session's next
-  message answers it (yes/ok/да allows; anything else a no, its words the reason). A request without tools (a title)
-  is the plain model's. The client gone mid-run: cancelled before the next step. `opencode/setup.sh`: the provider
-  in opencode's config, the LaunchAgent. Law: OpenAiFaceSuite (a session's messages one conversation; a yes performs
-  the asked call, a no never does and its reason reaches the model; a title the plain model's).
+  no extension) — keeps its conversations as opencode's own sessions. A session's id is opencode's
+  `x-opencode-session-id`, its directory the "Working directory:" opencode's system prompt names
+  (`x-okay-session`/`x-okay-directory` for another client). A request without tools (a title) is the plain model's.
+  - **The client's tools** (the default, `ClientTools`): the program runs on the tools the request offers (their
+    names and schemas as given, each description cut to its first sentence — the prompt stays short; the kind by the
+    name) and the CLIENT performs each call: a call ends the reply as `tool_calls` (one a reply, `finish_reason`
+    `tool_calls`), opencode runs it with its own tool card and its own permission prompt (Allow / Deny on the
+    phone), and the next request's `tool` message is the observation — the SAME program, waiting alive on it (no
+    replay), going on; its words on that request's reply. okay-agent keeps its short system prompt, Admit (a call off
+    its schema never reaches the client: the model observes why), Stuck, Wander, Compact, the budget, the journal;
+    its own gate is off (the client's permissions gate). A new user message while a call waits: that program
+    cancelled, the conversation going on from it (`Agent.next`); 30 minutes without the result: cancelled. Law:
+    ClientToolsSuite, a client playing opencode (40 hostile runs: every call the client got was admitted, some were
+    not; the model's requests extend each other across the client's requests — one live program; the project
+    untouched by okay-agent; the client's result what the model reads next; a new message mid-wait goes on).
+  - **Its own tools** (`--tools own [--ask commands|all|none]`): okay-agent's workspace tools performed by itself
+    (a thread of `AgUiServer`, one per directory and model); its steps the reply's text (`▸ name brief`, then
+    `✓ N lines` or `✗ why`); a call to be asked about ends the reply with the question, the program waits ALIVE and
+    the session's next message answers it (yes/ok/да allows; anything else a no, its words the reason). Law:
+    OpenAiFaceSuite.
+  The client gone mid-run: cancelled before the next step. `opencode/setup.sh`: the provider in opencode's config,
+  the LaunchAgent.
 - **OpenChamber** — `openchamber/`, an OpenChamber extension (its guest SDK, `apiVersion` 1): a rail panel and a
   local service. OpenChamber shows opencode's sessions only, so okay-agent's are not put into opencode (a
   synthetic message there schedules opencode's own run; ACP is not spoken by it): they are the panel's. The service

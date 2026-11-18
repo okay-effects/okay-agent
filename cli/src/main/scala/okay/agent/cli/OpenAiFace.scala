@@ -20,10 +20,12 @@ import okay.llm.{AgUi, Ask, HttpBackend, Request}
  * y, ok, allow, да) allows, anything else is a no, its words the reason the model reads. A request with no tools
  * (opencode's title, its summary) is the plain model's: forwarded */
 final class OpenAiFace(gateway: String, ask: ToolSpec.Kind => Boolean, timeoutSeconds: Int,
-    backend: Option[String => okay.llm.Llm.Backend] = None, mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root)):
+    backend: Option[String => okay.llm.Llm.Backend] = None, mcp: Path => Vector[Mcp.Server] = root => Mcp.found(root),
+    own: Boolean = false, journals: Boolean = true):
   private def model(m: String): okay.llm.Llm.Backend = backend.fold(HttpBackend(gateway, m))(_(m))
   private val servers = ConcurrentHashMap[(Path, String), AgUiServer]()
   private val sessions = ConcurrentHashMap[String, String]()
+  private lazy val client = ClientTools(model, journals = journals)
 
   def serve(req: Request, out: OutputStream): Unit = (req.method, req.path.takeWhile(_ != '?')) match
     case ("GET", "/" | "/v1" | "/v1/") => whole(out, 200, Json.obj("agent" -> Json.Str("okay-agent"),
@@ -35,9 +37,10 @@ final class OpenAiFace(gateway: String, ask: ToolSpec.Kind => Boolean, timeoutSe
       val stream = !body.field("stream").contains(Json.Bool(false))
       val messages = body.field("messages").map(_.list).getOrElse(Vector.empty)
       val reply = Reply(out, model, stream)
-      if body.field("tools").forall(_.list.isEmpty) then plain(model, messages, reply)
-      else agent(req, model, messages, reply)
-      reply.end()
+      val tools = body.field("tools").map(_.list).getOrElse(Vector.empty)
+      if tools.isEmpty then { plain(model, messages, reply); reply.end() }
+      else if own then { agent(req, model, messages, reply); reply.end() }
+      else reply.end(if clientRun(req, model, messages, ClientTools.specs(tools), reply) then "tool_calls" else "stop")
     case _ => whole(out, 404, """{"error":{"message":"not found"}}""")
 
   /** no tools: the model alone answers (a title, a summary) */
@@ -48,24 +51,42 @@ final class OpenAiFace(gateway: String, ask: ToolSpec.Kind => Boolean, timeoutSe
       reply.say(OpenAiFace.unthought(g.text).trim)
     finally g.close()
 
+  /** the client's tools: the program's calls performed by the client — true when this reply ends with one */
+  private def clientRun(req: Request, model: String, messages: Vector[Json], tools: Vector[ToolSpec],
+      reply: Reply): Boolean =
+    directory(req, messages) match
+      case None => { reply.say(OpenAiFace.noDirectory); false }
+      case Some(root) =>
+        val session = sessionOf(req, root, messages)
+        client.request(session, model, root, messages, tools, new client.Out:
+          @volatile var gone = false
+          def words(t: String): Unit =
+            try reply.say(t) catch case _: java.io.IOException => gone = true
+          def call(id: String, name: String, args: String): Unit =
+            try reply.call(id, name, args) catch case _: java.io.IOException => gone = true)
+
+  private def directory(req: Request, messages: Vector[Json]): Option[Path] =
+    val d = req.headers.get("x-okay-directory").filter(_.nonEmpty).orElse(OpenAiFace.directoryOf(messages))
+      .map(d => Path.of(d)).filter(Files.isDirectory(_)).map(_.toRealPath())
+    if d.isEmpty then
+      val first = messages.headOption.map(m => OpenAiFace.text(m("content"))).getOrElse("")
+      System.err.println("no directory in: " + OpenAiFace.oneLine(first, 600))
+    d
+
+  private def sessionOf(req: Request, root: Path, messages: Vector[Json]): String =
+    Vector("x-okay-session", "x-opencode-session-id").flatMap(req.headers.get).find(_.nonEmpty).getOrElse(
+      sessions.computeIfAbsent(root.toString + "\u0000" + messages.find(_.field("role").contains(Json.Str("user")))
+        .map(_.render).getOrElse(""), _ => s"s-${System.nanoTime()}"))
+
   /** the agent's run on the session's thread: a prompt, or the answer to the question it waits on */
   private def agent(req: Request, model: String, messages: Vector[Json], reply: Reply): Unit =
     val texts = messages.filter(m => m.field("role").exists(r => r == Json.Str("user") || r == Json.Str("assistant")))
       .map(m => Json.obj("role" -> m("role"), "content" -> Json.Str(OpenAiFace.text(m("content")))))
     val words = texts.reverse.find(_("role") == Json.Str("user")).map(_("content").string).getOrElse("")
-    val dir = req.headers.get("x-okay-directory").filter(_.nonEmpty).orElse(OpenAiFace.directoryOf(messages))
-      .map(d => Path.of(d)).filter(Files.isDirectory(_)).map(_.toRealPath())
-    dir match
-      case None =>
-        val first = messages.headOption.map(m => OpenAiFace.text(m("content"))).getOrElse("")
-        System.err.println("no directory in: " + OpenAiFace.oneLine(first, 600))
-        reply.say("okay-agent: which directory? Neither the header x-okay-directory nor a \"Working directory:\" " +
-          "line in the system prompt names one")
+    directory(req, messages) match
+      case None => reply.say(OpenAiFace.noDirectory)
       case Some(root) =>
-        val session = Vector("x-okay-session", "x-opencode-session-id").flatMap(req.headers.get).find(_.nonEmpty)
-        val thread = session.getOrElse(
-          sessions.computeIfAbsent(root.toString + "\u0000" + texts.headOption.map(_.render).getOrElse(""),
-            _ => s"s-${System.nanoTime()}"))
+        val thread = sessionOf(req, root, messages)
         val server = servers.computeIfAbsent((root, model), _ =>
           AgUiServer(root, () => this.model(model), ask, mcp = mcp, timeoutSeconds = timeoutSeconds))
         val runId = s"r-${System.nanoTime()}"
@@ -114,6 +135,15 @@ final class OpenAiFace(gateway: String, ask: ToolSpec.Kind => Boolean, timeoutSe
       midLine = !t.endsWith("\n")
       if stream then chunk(Json.obj("content" -> Json.Str(t)), None) else whole ++= t
 
+    private var toolCalls = Vector.empty[Json]
+    /** a call for the client to perform: OpenAI's `tool_calls` (one a reply) */
+    def call(callId: String, name: String, args: String): Unit =
+      open()
+      val c = Json.obj("index" -> Json.num(toolCalls.size), "id" -> Json.Str(callId), "type" -> Json.Str("function"),
+        "function" -> Json.obj("name" -> Json.Str(name), "arguments" -> Json.Str(args)))
+      toolCalls :+= c
+      if stream then chunk(Json.obj("tool_calls" -> Json.arr(c)), None)
+
     private def line(t: String): Unit = say((if midLine then "\n\n" else "") + t + "\n\n")
 
     def event(e: Json): Unit = e.field("type").collect { case Json.Str(t) => t }.getOrElse("") match
@@ -139,23 +169,28 @@ final class OpenAiFace(gateway: String, ask: ToolSpec.Kind => Boolean, timeoutSe
           case _ => ()
       case _ => ()
 
-    def end(): Unit =
+    def end(finish: String = "stop"): Unit =
       open()
       if stream then
         try
-          chunk(Json.obj(), Some("stop"))
+          chunk(Json.obj(), Some(finish))
           out.write("data: [DONE]\n\n".getBytes("UTF-8"))
           out.flush()
         catch case _: java.io.IOException => ()
       else
         val c = Json.obj("id" -> Json.Str(id), "object" -> Json.Str("chat.completion"),
           "created" -> Json.num(System.currentTimeMillis() / 1000), "model" -> Json.Str(model),
-          "choices" -> Json.arr(Json.obj("index" -> Json.num(0), "message" -> Json.obj(
-            "role" -> Json.Str("assistant"), "content" -> Json.Str(whole.toString)),
-            "finish_reason" -> Json.Str("stop"))))
+          "choices" -> Json.arr(Json.obj("index" -> Json.num(0), "message" -> Json.Obj(Vector(
+            "role" -> Json.Str("assistant"), "content" -> Json.Str(whole.toString)) ++
+              (if toolCalls.isEmpty then Vector.empty else Vector("tool_calls" -> Json.Arr(toolCalls.map(c =>
+                Json.Obj(c.record.filterNot(_._1 == "index"))))))),
+            "finish_reason" -> Json.Str(finish))))
         OpenAiFace.this.whole(out, 200, c.render)
 
 object OpenAiFace:
+  val noDirectory = "okay-agent: which directory? Neither the header x-okay-directory nor a \"Working directory:\" " +
+    "line in the system prompt names one"
+
   /** a message's text: its string, or its text parts */
   def text(c: Json): String = c match
     case Json.Str(t) => t

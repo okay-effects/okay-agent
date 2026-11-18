@@ -27,7 +27,7 @@ class OpenAiFaceSuite extends munit.FunSuite:
     val root = Files.createTempDirectory("openai").toRealPath()
     Files.writeString(root.resolve("a.txt"), "hello")
     val face = OpenAiFace("http://127.0.0.1:1/v1", _ == ToolSpec.Kind.Exec, 30, Some(_ => Hypo.backend(model)),
-      _ => Vector.empty)
+      _ => Vector.empty, own = true)
     val socket = java.net.ServerSocket(0)
     val port = socket.getLocalPort
     socket.close()
